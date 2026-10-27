@@ -1,0 +1,213 @@
+schemaVersion: 1
+pillar: traces
+playbookTab: Traces
+defaults:
+  # Playbook cheat sheet defaults (editable in the UI)
+  nonErrorPct: 1
+  nonCriticalErrorPct: 1
+  criticalErrorPct: 100
+  latencyThresholdMs: 500
+  decisionWait: 10s
+  numTraces: 50000
+rules:
+  - id: SPAN-SAMPLING
+    playbookSection: "Traces › Sampling cheat sheet / Tail Sampling reference"
+    title: Keep errors and slow traces, sample healthy traffic
+    plain: Every request creates a trace, and most of them look the same. Tail sampling keeps the traces that explain problems and stores only a small sample of healthy ones.
+    defaultPhase: 2
+    effort: medium
+    owner: DevOps
+    overlapsWith: [SPAN-HEALTH, SPAN-INTERNAL, SPAN-LOW-PRIORITY]
+    detect:
+      queries:
+        - id: status-split
+          window: 24h
+          limit: 10
+          dataprime: "groupby $d.tags['otel.status_code']:string as status aggregate count() as spans"
+        - id: errors-by-service
+          window: 24h
+          limit: 50
+          dataprime: "filter $d.tags['otel.status_code']:string == 'ERROR' | groupby $l.serviceName aggregate count() as spans | orderby spans desc"
+    config:
+      # Component name verified in contrib README: `tail_sampling` (playbook also writes `tailsampling`).
+      processor: tail_sampling
+      stability: beta
+      note: All spans of a trace must reach the same collector instance (loadbalancing exporter in a two-layer setup).
+    verify:
+      - Are traces needed for anything other than investigation (for example, trace-based alerts or exports)?
+      - Which services are critical (keep more of their errors)?
+      - Is the collector topology able to route whole traces to one instance?
+    sources: [playbook, playbook-tailsampling, otel-tailsampling]
+
+  - id: SPAN-HEALTH
+    playbookSection: "Traces › Filter health checks, pings, probes"
+    title: Remove health check, ping and probe spans
+    plain: Health checks run constantly and look identical. They help Kubernetes, not engineers debugging an incident.
+    defaultPhase: 1
+    effort: low
+    owner: DevOps
+    overlapsWith: [SPAN-SAMPLING]
+    detect:
+      paths: ['/health', '/healthz', '/ready', '/readyz', '/livez', '/ping', '/actuator/health']
+      queries:
+        - id: health-spans
+          window: 24h
+          limit: 50
+          dataprime: "filter ['/health','/healthz','/ready','/readyz','/livez','/ping','/actuator/health'].arrayContains($d.tags['http.target']:string) || ['/health','/healthz','/ready','/readyz','/livez','/ping','/actuator/health'].arrayContains($d.tags['url.path']:string) || $d.tags['user_agent.original']:string.startsWith('kube-probe') || $d.tags['rpc.service']:string == 'grpc.health.v1.Health' | groupby $l.serviceName aggregate count() as spans | orderby spans desc"
+          corrected: "DataPrime has no `in [...]` operator; uses arrayContains. Also checks url.path (current semconv) as well as http.target."
+    config: { processor: filter/drop-health, placement: before-sampling }
+    verify:
+      - Is any synthetic or uptime alert built on these spans?
+    sources: [playbook, otel-filter]
+
+  - id: SPAN-INTERNAL
+    playbookSection: "Traces › Filter internal spans"
+    title: Drop internal spans in non-critical services (keep errors)
+    plain: Internal spans describe steps inside one service. In non-critical services they are rarely needed and can make up a large share of each trace.
+    defaultPhase: 1
+    effort: low
+    owner: DevOps
+    overlapsWith: [SPAN-SAMPLING]
+    detect:
+      queries:
+        - id: internal-by-service
+          window: 24h
+          limit: 50
+          dataprime: "filter $d.tags['span.kind']:string == 'internal' | groupby $l.serviceName aggregate count() as spans | orderby spans desc"
+          note: "In Coralogix storage span kind is the lowercase string tag `span.kind`. In OTTL the path is `kind.string` with values like `Internal` (ottlspan README) — the playbook's OTTL `attributes[\"span.kind\"] == \"internal\"` is corrected."
+    verify:
+      - Do engineers use internal spans of these services when investigating?
+    sources: [playbook, otel-ottl-span, otel-filter]
+
+  - id: SPAN-LOW-PRIORITY
+    playbookSection: "Traces › Low-priority services"
+    title: Sample low-priority services more heavily
+    plain: Not every service needs the same detail. Non-critical services can be sampled harder while critical ones keep more.
+    defaultPhase: 2
+    effort: medium
+    owner: DevOps
+    overlapsWith: [SPAN-SAMPLING]
+    requires: criticalServices
+    verify:
+      - Confirm the list of critical services with the customer.
+    sources: [playbook, playbook-tailsampling]
+
+  - id: SPAN-LABELS
+    playbookSection: "Traces › Remove not needed labels"
+    title: Remove unneeded span and resource attributes
+    plain: Large attributes on every span add size without helping investigations.
+    defaultPhase: 1
+    effort: low
+    owner: DevOps
+    overlapsWith: [UNI-REDUCE-RESOURCE-ATTRS]
+    sources: [playbook, otel-transform, otel-resource]
+
+  - id: SPAN-HEAVY-VALUES
+    playbookSection: "Traces › Reduce heavy span values"
+    title: Normalise IDs and query strings in span names and URLs
+    plain: IDs and query strings inside URLs make every span unique, which bloats traces and span metrics.
+    defaultPhase: 1
+    effort: low
+    owner: DevOps
+    overlapsWith: [METRIC-SPAN-SANITIZATION]
+    detect:
+      queries:
+        - id: url-ids
+          window: 24h
+          limit: 25
+          dataprime: "filter $d.tags['http.url']:string.matches(/\\/[0-9]{3,}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}/) || $d.tags['url.full']:string.matches(/\\/[0-9]{3,}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}/) | groupby $l.serviceName aggregate count() as spans, approx_count_distinct($d.tags['http.url']:string) as distinct_urls | orderby spans desc"
+          corrected: "DataPrime `matches` requires a regex literal (/…/), not a string."
+    config:
+      # Playbook snippet had a malformed `replace_pattern((`. Fixed form below (OTTL replace_pattern(target, regex, replacement)).
+      statement: 'replace_pattern(attributes["http.url"], "/(?:[0-9a-fA-F]{24,32}|[0-9]+|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})(/|$)", "/{id}$$1")'
+    verify:
+      - Is the full URL with IDs needed for investigations anywhere?
+    sources: [playbook, otel-transform]
+
+  - id: SPAN-LIBRARIES
+    playbookSection: "Executive Summary template › SPAN-3 pattern"
+    title: Review high-volume instrumentation libraries
+    plain: A few libraries (ORM, database and cache clients) often produce most spans. Knowing which ones guides sampling and instrumentation choices.
+    defaultPhase: 2
+    effort: medium
+    owner: App Team
+    savings: needs-scoping
+    detect:
+      queries:
+        - id: spans-by-library
+          window: 24h
+          limit: 15
+          dataprime: "groupby $d.tags['otel.library.name']:string as library aggregate count() as spans | orderby spans desc"
+    sources: [playbook-template]
+
+  - id: SPAN-SPANMETRICS-TCO
+    playbookSection: "Traces › Move All Traces to Low Tier"
+    title: Alert on span metrics and keep raw traces in the Low tier
+    plain: Dashboards and alerts work best on span metrics. Raw traces are only needed for investigation, and Low-tier traces stay searchable.
+    defaultPhase: 1
+    effort: low
+    owner: DevOps
+    overlapsWith: [SPAN-SAMPLING]   # tiering applies to whatever survives sampling
+    detect:
+      usage: { pillar: traces, tiers: [high, medium] }
+    draft: tco-trace-policy-pair
+    notes:
+      - Create two complementary policies (service is X / service is not X) because the TCO tracing UI cannot select all services in one policy.
+      - For high-volume, low-value traces, consider Events2Metrics.
+    verify:
+      - Are any alerts or dashboards built on raw traces rather than span metrics?
+    sources: [playbook, cx-tco-traces, cx-units, cx-e2m]
+  - id: SPAN-BASELINE
+    playbookSection: "Internal — volume baseline used by several checks"
+    title: Span volume baseline
+    internalOnly: true
+    detect:
+      queries:
+        - id: span-count
+          window: 24h
+          limit: 1
+          dataprime: "aggregate count() as spans"
+        - id: sample
+          window: 1h
+          limit: 20
+          dataprime: "limit 20"
+        - id: kind-split
+          window: 24h
+          limit: 10
+          dataprime: "groupby $d.tags['span.kind']:string as kind aggregate count() as spans | orderby spans desc"
+        - id: sdk-split
+          window: 24h
+          limit: 20
+          dataprime: "groupby $d.process.tags['telemetry.sdk.language']:string as lang, $d.process.tags['telemetry.sdk.name']:string as sdk, $l.serviceName as service aggregate count() as spans"
+        - id: by-platform
+          window: 24h
+          limit: 20
+          dataprime: "groupby $d.process.tags['cloud.platform']:string as platform, $d.process.tags['k8s.cluster.name']:string as cluster aggregate count() as n"
+    sources: [cx-dataprime]
+  - id: INV-SPANS
+    playbookSection: "Investigate mode — data-driven discovery (validated live with cx 0.1.27)"
+    title: Investigate span contributors
+    internalOnly: true
+    detect:
+      queries:
+        - id: top-operations
+          window: 24h
+          limit: 50
+          dataprime: "groupby $l.serviceName as service, $l.operationName as operation aggregate count() as spans, avg($m.duration) as avg_duration | orderby spans desc"
+        - id: samples
+          window: 24h
+          limit: 3
+          dataprime: "filter $l.serviceName == '{service}' && $l.operationName == '{operation}' | limit 3"
+        - id: validate
+          window: 24h
+          limit: 1
+          dataprime: "filter {expr} | aggregate count() as n"
+        - id: matched-samples
+          window: 24h
+          limit: 3
+          dataprime: "filter {expr} | limit 3"
+        - id: validate-errors
+          window: 24h
+          limit: 10
+          dataprime: "filter {expr} | groupby $d.tags['otel.status_code']:string as status aggregate count() as n"
+    sources: [cx-dataprime, otel-filter, otel-transform]

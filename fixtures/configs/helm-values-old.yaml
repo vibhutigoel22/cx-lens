@@ -1,0 +1,49 @@
+# Customer values for coralogix/otel-integration (sample, outdated chart)
+global:
+  domain: "coralogix.in"
+  clusterName: "eks-prod-01"
+  version: "0.0.300"
+  defaultApplicationName: "default"
+
+opentelemetry-agent:
+  enabled: true
+  presets:
+    spanMetrics:
+      enabled: true
+    # Custom denylist copied from an old ticket — note it removes cloud.region (protected!)
+    reduceResourceAttributes:
+      enabled: true
+      denylist:
+        metrics: [k8s.pod.uid, cloud.region, process.pid]
+        logs: [k8s.pod.uid, cloud.region]
+        traces: [k8s.pod.uid]
+  config:
+    processors:
+      filter/drop-noise:
+        error_mode: ignore
+        traces:
+          span:
+            - 'attributes["http.target"] == "/metrics"'
+      transform/decode:
+        error_mode: ignore
+        log_statements:
+          - context: log
+            statements:
+              - set(attributes["payload"], Base64Decode(attributes["payload_b64"]))
+    connectors:
+      spanmetrics:
+        dimensions_cache_size: 5000
+    exporters:
+      otlp/coralogix:
+        endpoint: ingress.coralogix.in:443
+        compression: none
+
+opentelemetry-cluster-collector:
+  enabled: true
+  presets:
+    # default denylist in use => removes protected cloud.* / host.* labels
+    reduceResourceAttributes:
+      enabled: true
+
+opentelemetry-gateway:
+  enabled: false

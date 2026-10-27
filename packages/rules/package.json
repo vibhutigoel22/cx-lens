@@ -1,0 +1,1 @@
+{ "name": "@cx-lens/rules", "version": "0.1.0", "type": "module", "description": "Coralogix Lens rule catalogue (data files derived from the Telemetry Health & Value Review playbook)", "files": ["*.yaml"] }

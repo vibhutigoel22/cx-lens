@@ -1,0 +1,43 @@
+# Source registry. Every rule references sources by key. Only allowed sources (see SOURCES.md).
+# internal: true => stripped from the customer-ready report.
+schemaVersion: 1
+sources:
+  playbook:            { title: "Telemetry Health & Value Review – TAM Playbook", url: "https://app.notion.com/p/coralogix/Telemetry-Health-Value-Review-TAM-Playbook-3d0c048defad806ab008eda1bd36b6b4", internal: true }
+  playbook-template:   { title: "Executive Summary – Optimization (report template)", url: "https://app.notion.com/p/3d1c048defad806f8601c39efef703b2", internal: true }
+  playbook-tailsampling: { title: "Tail Sampling for Traces (OpenTelemetry) – full reference", url: "https://app.notion.com/p/3d0c048defad80a7acfdd00059416527", internal: true }
+  chart-readme:        { title: "otel-integration Helm chart README – Filtering and reducing costs", url: "https://github.com/coralogix/telemetry-shippers/tree/master/otel-integration/k8s-helm#filtering-and-reducing-costs" }
+  chart-values:        { title: "otel-integration Helm chart values.yaml", url: "https://github.com/coralogix/telemetry-shippers/blob/master/otel-integration/k8s-helm/values.yaml" }
+  chart-changelog:     { title: "otel-integration CHANGELOG", url: "https://github.com/coralogix/telemetry-shippers/blob/master/otel-integration/CHANGELOG.md" }
+  chart-spanmetrics-sanitization: { title: "otel-integration README – Span metrics sanitization", url: "https://github.com/coralogix/telemetry-shippers/tree/master/otel-integration/k8s-helm#span-metrics" }
+  cx-filtering-costs:  { title: "Coralogix docs – Filtering and reducing costs (EKS)", url: "https://coralogix.com/docs/external/telemetry-shippers/otel-integration/k8s-helm/kubernetes-observability/filtering-and-reducing-costs/" }
+  cx-ecs-ec2:          { title: "Coralogix docs – AWS ECS-EC2 OTel integration", url: "https://coralogix.com/docs/opentelemetry/aws-ecs-ec2/ecs-ec2-integration/" }
+  cx-units:            { title: "Coralogix docs – How usage is measured", url: "https://coralogix.com/docs/user-guides/account-management/organization-management/usage-and-quota/how-usage-is-measured/" }
+  cx-tco:              { title: "Coralogix docs – TCO Optimizer", url: "https://coralogix.com/docs/user-guides/account-management/tco-optimizer/" }
+  cx-tco-traces:       { title: "Coralogix docs – TCO Optimizer (Traces)", url: "https://coralogix.com/docs/user-guides/account-management/tco-optimizer/traces/" }
+  cx-metrics-usage:    { title: "Coralogix docs – Metrics Usage Analyzer", url: "https://coralogix.com/docs/user-guides/account-management/payment-and-billing/metrics-usage-analyzer/" }
+  cx-metrics-optimization: { title: "Coralogix docs – Metrics Cost Optimizer", url: "https://coralogix.com/docs/user-guides/account-management/payment-and-billing/metrics-optimization/" }
+  cx-scrape-interval:  { title: "Coralogix docs – Optimize metrics costs by adjusting your scrape interval", url: "https://coralogix.com/docs/user-guides/account-management/payment-and-billing/optimize-metrics-costs-in-coralogix-by-adjusting-your-scrape-interval/" }
+  cx-span-cardinality: { title: "Coralogix docs – Span metrics cardinality limits", url: "https://coralogix.com/docs/user-guides/apm/getting-started/span-metrics-cardinality-limits/" }
+  cx-dataprime:        { title: "Coralogix docs – DataPrime language reference", url: "https://coralogix.com/docs/dataprime/" }
+  cx-domain:           { title: "Coralogix docs – Coralogix domain", url: "https://coralogix.com/docs/user-guides/account-management/account-settings/coralogix-domain/" }
+  cx-cli:              { title: "Coralogix docs – cx CLI", url: "https://coralogix.com/docs/external/cx-cli/" }
+  cx-infra-explorer-gcp: { title: "Coralogix docs – GCP Infrastructure Explorer", url: "https://coralogix.com/docs/integrations/gcp/gcp-infrastructure-explorer/" }
+  cx-e2m:              { title: "Coralogix docs – Events2Metrics", url: "https://coralogix.com/docs/user-guides/monitoring-and-insights/events2metrics/" }
+  otel-groupbyattrs:   { title: "groupbyattrsprocessor README (contrib)", url: "https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/processor/groupbyattrsprocessor" }
+  otel-k8sattributes:  { title: "k8sattributesprocessor README (contrib)", url: "https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/processor/k8sattributesprocessor" }
+  otel-memorylimiter:  { title: "memorylimiterprocessor README (core)", url: "https://github.com/open-telemetry/opentelemetry-collector/tree/main/processor/memorylimiterprocessor" }
+  otel-batch:          { title: "batchprocessor README (core)", url: "https://github.com/open-telemetry/opentelemetry-collector/tree/main/processor/batchprocessor" }
+  otel-configgrpc:     { title: "configgrpc README – compression (core)", url: "https://github.com/open-telemetry/opentelemetry-collector/blob/main/config/configgrpc/README.md" }
+  otel-filter:         { title: "filterprocessor README (contrib)", url: "https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/processor/filterprocessor" }
+  otel-transform:      { title: "transformprocessor README (contrib)", url: "https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/processor/transformprocessor" }
+  otel-logdedup:       { title: "logdedupprocessor README (contrib)", url: "https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/processor/logdedupprocessor" }
+  otel-filelog:        { title: "filelogreceiver README – multiline (contrib)", url: "https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/filelogreceiver#multiline-configuration" }
+  otel-tailsampling:   { title: "tailsamplingprocessor README (contrib)", url: "https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/processor/tailsamplingprocessor" }
+  otel-ottl-span:      { title: "OTTL span context README (contrib)", url: "https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/pkg/ottl/contexts/ottlspan/README.md" }
+  otel-redaction:      { title: "redactionprocessor README (contrib)", url: "https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/processor/redactionprocessor" }
+  otel-spanmetrics:    { title: "spanmetricsconnector README (contrib)", url: "https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/connector/spanmetricsconnector" }
+  otel-probabilistic:  { title: "probabilisticsamplerprocessor README (contrib)", url: "https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/processor/probabilisticsamplerprocessor" }
+  otel-resource:       { title: "resourceprocessor README (contrib)", url: "https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/processor/resourceprocessor" }
+  otel-contrib-changelog: { title: "opentelemetry-collector-contrib CHANGELOG", url: "https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/CHANGELOG.md" }
+  otel-core-changelog: { title: "opentelemetry-collector CHANGELOG", url: "https://github.com/open-telemetry/opentelemetry-collector/blob/main/CHANGELOG.md" }
+  otel-releases:       { title: "opentelemetry-collector-releases – GitHub releases", url: "https://github.com/open-telemetry/opentelemetry-collector-releases/releases" }

@@ -1,0 +1,31 @@
+{
+  "name": "cx-lens-monorepo",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "tsc -b packages/core packages/connectors packages/api apps/cli && npm run build -w @cx-lens/ui",
+    "test": "node scripts/check-contrast.mjs && vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -b packages/core packages/connectors packages/api apps/cli --pretty",
+    "demo": "node apps/cli/dist/index.js analyze --demo --pillars universal,logs,traces,metrics --out ./demo-report",
+    "serve": "node packages/api/dist/server.js",
+    "icons": "node scripts/build-icons.mjs",
+    "e2e": "npm run e2e -w @cx-lens/ui",
+    "desktop:dev": "npm run dev -w @cx-lens/desktop",
+    "desktop:build": "npm run build -w @cx-lens/desktop",
+    "check:contrast": "node scripts/check-contrast.mjs"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.4",
+    "@types/node": "^22.9.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

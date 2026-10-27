@@ -1,0 +1,1 @@
+{"name":"@cx-lens/api","version":"0.1.0","type":"module","main":"dist/server.js","types":"dist/server.d.ts","dependencies":{"@cx-lens/connectors":"0.1.0","@cx-lens/core":"0.1.0","ws":"^8.18.0"},"devDependencies":{"@types/ws":"^8.5.12"}}

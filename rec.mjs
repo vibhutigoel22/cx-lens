@@ -1,0 +1,17 @@
+import { runAssessment } from './packages/core/dist/index.js';
+import { buildConnector, RecordingConnector, MetricUsageApi } from './packages/connectors/dist/index.js';
+import { readFileSync, writeFileSync } from 'node:fs';
+const live = await buildConnector({ name: 'test-tam-tool', region: 'ap1', profile: 'test-tam-tool' }, { claude: false });
+live.askAI = (await import('/tmp/stub-metrics.mjs')).stubAll; live.metricUsage = new MetricUsageApi('ap1', process.env.K);
+const rec = new RecordingConnector(live); const t0 = Date.now();
+const a = await runAssessment({ connector: rec, customer: { name: 'Demo Retail', environment: 'production', preparedBy: 'TAM', criticalServices: ['checkout', 'payment'] }, pillars: ['universal', 'logs', 'traces', 'metrics'], deployment: 'helm', deployments: ['helm', 'ecs'], configs: { helm: readFileSync('fixtures/configs/helm-values-old.yaml', 'utf8'), ecs: readFileSync('fixtures/configs/ecs-collector-0.98.yaml', 'utf8') }, options: { investigate: { enabled: true, maxContributors: 8, vendor: 'Datadog' } }, onProgress: (e) => { if (e.checkId === 'INVESTIGATE' && e.message && !/Sampled|Measured|Grouped/.test(e.message)) console.log(`  · ${((Date.now() - t0) / 1000).toFixed(0)}s ${e.message}`); } });
+console.log(`run ${((Date.now() - t0) / 1000).toFixed(0)}s; inventory ${a.labelInventory?.source} ${a.labelInventory?.rows.length} labels; notes: ${a.notes.join(' | ').slice(0, 300)}`);
+console.log('top labels:', a.labelInventory?.rows.slice(0, 6).map((r) => `${r.name}(${r.kind}${r.locked ? ',' + r.locked : ''})`).join(' '));
+for (const f of a.findings.filter((f) => f.source === 'investigate' && f.pillar === 'metrics')) console.log(`${f.ruleId} | ${f.title} | ${f.savings.kind === 'units' ? f.savings.unitsPerDay.toFixed(4) + ' u/d' : f.savings.kind} | ${f.display?.validation?.result?.slice(0, 140)}`);
+console.log('split:', JSON.stringify(a.platformSplit));
+let s = JSON.stringify(rec.fx);
+s = s.replace(/\b\d{12}\b/g, '123456789012').replace(/"companyId":\s*\d+/g, '"companyId":1000000').replace(/https?:\/\/[a-z0-9-]+\.app\.coralogix\.[a-z]+/g, 'https://demo-team.app.coralogix.in').split('cs-tam-samarth').join('demo-team');
+const hosts = {}; s = s.replace(/ip-10-\d+-\d+-\d+\.ap-south-1\.compute\.internal/g, (m) => (hosts[m] ??= `ip-10-0-0-${Object.keys(hosts).length + 1}.ap-south-1.compute.internal`));
+s = s.replace(/\bi-0[0-9a-f]{8,17}\b/g, 'i-0demo0000000000').replace(/\bami-0[0-9a-f]{8,17}\b/g, 'ami-0demo000000000').replace(/\b10\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g, '10.0.0.1').replace(/[A-Za-z0-9._%+-]+@(?!example\.com)[A-Za-z0-9.-]+\.[a-z]{2,}/g, 'user@example.com').split('eks-fes-prod-01').join('eks-demo-01').split('remit-prod').join('demo-prod');
+const fx = JSON.parse(s); fx.source = 'recorded from a Coralogix test team with cx 0.1.27 and the Metric Usage API, anonymised; Investigate, label and skill answers from a scripted reviewer standing in for Claude';
+writeFileSync('fixtures/demo.json', JSON.stringify(fx)); console.log('recorded; promql', Object.keys(fx.promql ?? {}).length, 'usage api', !!fx.metricUsage?.labels, 'ai', Object.keys(fx.ai ?? {}).join(','));

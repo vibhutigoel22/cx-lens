@@ -1,0 +1,1 @@
+{"name":"@cx-lens/cli","version":"0.1.0","type":"module","bin":{"cxlens":"dist/index.js"},"dependencies":{"@cx-lens/connectors":"0.1.0","@cx-lens/core":"0.1.0"},"devDependencies":{"sharp":"^0.33.5"}}

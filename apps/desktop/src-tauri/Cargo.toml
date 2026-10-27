@@ -1,0 +1,13 @@
+[package]
+name = "coralogix-lens"
+version = "0.1.0"
+description = "Coralogix Lens — Telemetry Health & Value Review"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde_json = "1"
+rand = "0.8"

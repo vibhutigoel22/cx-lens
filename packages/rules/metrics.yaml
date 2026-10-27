@@ -1,0 +1,123 @@
+schemaVersion: 1
+pillar: metrics
+playbookTab: Metrics
+note: The playbook says this tab applies to the older Metric Model only.
+thresholds:
+  healthySpanNamesPerService: { min: 10, max: 50 }
+  flagSpanNamesPerService: 500
+  highChurnLabels: [process_pid, k8s_pod_uid, container_id, k8s_replicaset_uid, k8s_node_uid, k8s_pod_name]
+  unboundedLabelHints: [user_id, userid, request_id, session_id, trace_id, enduser_id]
+rules:
+  - id: METRIC-HIGH-CHURN
+    playbookSection: "Metrics › 1 reduceResourceAttributes"
+    title: Remove high-churn IDs from metric labels
+    plain: Pod and process IDs change on every restart, so each restart creates new metric series.
+    defaultPhase: 2
+    effort: medium
+    owner: DevOps
+    deploymentTypes: [helm]
+    overlapsWith: [UNI-REDUCE-RESOURCE-ATTRS]
+    sources: [playbook, chart-readme]
+  - id: METRIC-SPAN-SANITIZATION
+    playbookSection: "Metrics › 2 spanMetricsSanitization"
+    title: Sanitise span names and DB statements before span metrics
+    plain: When IDs appear in span names, every ID becomes a new metric series.
+    defaultPhase: 1
+    effort: low
+    owner: DevOps
+    deploymentTypes: [helm]
+    overlapsWith: [SPAN-HEAVY-VALUES]
+    sources: [playbook, chart-spanmetrics-sanitization]
+  - id: METRIC-SPAN-ATTRS
+    playbookSection: "Metrics › 3 Transform Statements"
+    title: Keep unbounded attributes out of span metric labels
+    plain: Attributes like user or request IDs have no upper limit, so they explode metric cardinality.
+    defaultPhase: 1
+    effort: low
+    owner: DevOps
+    sources: [playbook, otel-transform]
+  - id: METRIC-UNUSED
+    playbookSection: "Metrics › Common Tools › Metrics Usage Analyzer"
+    title: Block top-cost metrics that nobody queries
+    plain: Some of the most expensive metrics are never queried. Blocking them is instant and reversible.
+    defaultPhase: 1
+    effort: low
+    owner: DevOps
+    savings: needs-scoping
+    steps:
+      - Open Settings > Subscriptions > Metrics Data and switch to the Units view.
+      - Sort by consumption and note the top 20 metrics.
+      - Cross-check each in the Query Usage Analyzer; any top-20 metric with zero queries in 30 days is a block candidate.
+      - Block it in Settings > Subscriptions > Metrics Data > Blocked (reversible). The app never blocks automatically.
+    sources: [playbook, cx-metrics-usage, cx-metrics-optimization]
+  - id: METRIC-LABEL-ANALYZER
+    playbookSection: "Metrics › Tooling: Metrics Label Analyzer Script"
+    title: Services with too many unique span names
+    plain: A healthy service has roughly 10–50 unique span names. Far more means IDs are leaking into names.
+    defaultPhase: 1
+    effort: low
+    owner: DevOps
+    overlapsWith: [METRIC-SPAN-SANITIZATION, SPAN-HEAVY-VALUES]
+    sources: [playbook, cx-span-cardinality]
+  - id: METRIC-CARDINALITY-LIMIT
+    playbookSection: "Metrics › Aggregator Cardinality Limiter"
+    title: Set a sensible span metrics cardinality limit
+    plain: The span metrics connector can cap unique label combinations. Extra ones fold into one overflow series (otel.metric.overflow="true").
+    defaultPhase: 1
+    effort: low
+    owner: DevOps
+    savings: none-units
+    notes:
+      - Fix cardinality upstream first, then set the limit near the steady-state series count. Raising the limit only delays the problem and costs collector memory.
+      - dimensions_cache_size is deprecated in favour of aggregation_cardinality_limit (spanmetricsconnector README).
+    sources: [playbook, otel-spanmetrics, cx-span-cardinality]
+  - id: METRIC-NO-PROB-SAMPLER
+    playbookSection: "Metrics › What's New (metrics sampling ≠ trace sampling)"
+    title: probabilistic_sampler cannot sample metrics
+    plain: The probabilistic sampler supports traces and logs only. For metrics, use deterministic filtering or SDK-level sampling.
+    defaultPhase: 1
+    effort: low
+    owner: DevOps
+    savings: none-units
+    sources: [playbook, otel-probabilistic]
+  - id: METRIC-FILTER-UNUSED
+    playbookSection: "Metrics › ECS/EC2 1 Filter Processor"
+    title: Drop unused or noisy metrics at the collector
+    defaultPhase: 1
+    effort: low
+    owner: DevOps
+    deploymentTypes: [ecs, ec2, standalone]
+    savings: needs-scoping
+    sources: [playbook, otel-filter, cx-ecs-ec2]
+  - id: METRIC-HEAVY-RESOURCE
+    playbookSection: "Metrics › ECS/EC2 5 Transform/reduce"
+    title: Remove heavy resource attributes (transform/reduce)
+    defaultPhase: 1
+    effort: low
+    owner: DevOps
+    deploymentTypes: [ecs, ec2, standalone]
+    overlapsWith: [UNI-REDUCE-RESOURCE-ATTRS]
+    sources: [playbook, cx-ecs-ec2, otel-transform]
+  - id: METRIC-SCRAPE-INTERVAL
+    playbookSection: "Metrics › ECS/EC2 3 Scrape Interval"
+    title: Raise short scrape intervals to 60s
+    plain: Scraping every 15s produces four times the data of 60s. Keep short intervals only for autoscaling signals.
+    defaultPhase: 1
+    effort: low
+    owner: DevOps
+    thresholds: { targetSeconds: 60 }
+    sources: [playbook, cx-scrape-interval]
+  - id: METRIC-REDACTION
+    playbookSection: "Metrics › ECS/EC2 4 Redaction Processor"
+    title: Sanitise sensitive and high-cardinality values (redaction)
+    defaultPhase: 1
+    effort: low
+    owner: DevOps
+    deploymentTypes: [ecs, ec2, standalone]
+    overlapsWith: [SPAN-HEAVY-VALUES]
+    config:
+      # url_sanitizer and db_sanitizer verified in the current redactionprocessor README (traces: beta,
+      # logs/metrics: alpha). For collector versions where they are unknown, the writer falls back to
+      # transform + replace_pattern and says so.
+      sanitizersMinVersion: null
+    sources: [playbook, otel-redaction]

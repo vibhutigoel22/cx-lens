@@ -1,0 +1,171 @@
+schemaVersion: 1
+pillar: universal
+playbookTab: Universal
+denylists:
+  # Recommended custom denylist = chart default (README "Filtering and reducing costs", verified
+  # identical for chart 0.0.356 and 0.0.362) MINUS protected labels. A custom denylist REPLACES the default.
+  metricsAndLogs: &ml
+    - container.id
+    - cx.otel_integration.name
+    - faas.id
+    - faas.instance
+    - faas.name
+    - faas.version
+    - k8s.cronjob.uid
+    - k8s.daemonset.uid
+    - k8s.deployment.uid
+    - k8s.hpa.uid
+    - k8s.job.uid
+    - k8s.namespace.uid
+    - k8s.node.uid
+    - k8s.pod.start_time
+    - k8s.pod.uid
+    - k8s.replicaset.uid
+    - k8s.statefulset.uid
+    - os.type
+    - os.version
+    - process.command
+    - process.command_line
+    - process.command_args
+    - process.executable.name
+    - process.executable.path
+    - process.owner
+    - process.pid
+    - process.parent_pid
+    - process.runtime.description
+    - process.runtime.name
+    - process.runtime.version
+    - net.host.name
+    - net.host.port
+    - telemetry.distro.name
+    - telemetry.distro.version
+    - telemetry.sdk.language
+    - telemetry.sdk.name
+    - telemetry.sdk.version
+  # traces: same minus telemetry.* (chart default keeps these on traces)
+  tracesExclude: [telemetry.distro.name, telemetry.distro.version, telemetry.sdk.language, telemetry.sdk.name, telemetry.sdk.version]
+  # Default list as published in the chart README at the time of writing (used for the upgrade recheck).
+  chartDefaultSnapshot:
+    chartVersion: "0.0.362"
+    checkedOn: "2026-10-23"
+    attributes: [azure.resourcegroup.name, azure.vm.name, azure.vm.scaleset.name, azure.vm.size, cloud.account.id, cloud.availability_zone, cloud.platform, cloud.provider, cloud.region, container.id, cx.otel_integration.name, faas.id, faas.instance, faas.name, faas.version, gcp.cloud_run.job.execution, gcp.cloud_run.job.task_index, gcp.gce.instance_group_manager.name, gcp.gce.instance_group_manager.region, gcp.gce.instance_group_manager.zone, host.image.id, host.type, k8s.cronjob.uid, k8s.daemonset.uid, k8s.deployment.uid, k8s.hpa.uid, k8s.job.uid, k8s.namespace.uid, k8s.node.uid, k8s.pod.start_time, k8s.pod.uid, k8s.replicaset.uid, k8s.statefulset.uid, os.type, os.version, process.command, process.command_line, process.command_args, process.executable.name, process.executable.path, process.owner, process.pid, process.parent_pid, process.runtime.description, process.runtime.name, process.runtime.version, net.host.name, net.host.port, telemetry.distro.name, telemetry.distro.version, telemetry.sdk.language, telemetry.sdk.name, telemetry.sdk.version]
+    sources: [chart-readme]
+
+rules:
+  - id: UNI-REDUCE-RESOURCE-ATTRS
+    playbookSection: "Universal › 1 reduceResourceAttributes"
+    title: Remove unused resource attributes on every collector
+    plain: Every log line, span and metric carries the same block of resource metadata. Short-lived IDs and SDK details in that block are rarely queried but are paid for on every record.
+    defaultPhase: 2
+    effort: medium
+    owner: DevOps
+    components: [cluster-collector, agent, gateway]
+    detect:
+      # Evidence query: per-attribute payload on logs (validated live with cx 0.1.27, DataPrime)
+      queries:
+        - id: resource-attr-bytes
+          pillar: logs
+          window: 24h
+          limit: 50
+          dataprime: "filter $d.resource.attributes['{attr}'] != null | create byte_length from byteLength($d.resource.attributes['{attr}']:string) | aggregate avg(byte_length) as avg_bytes, count() as log_count"
+        - id: resource-attr-bytes-spans
+          pillar: traces
+          window: 24h
+          limit: 50
+          dataprime: "filter $d.process.tags['{attr}'] != null | create byte_length from byteLength($d.process.tags['{attr}']:string) | aggregate avg(byte_length) as avg_bytes, count() as span_count"
+    verify:
+      - Do any dashboards, alerts, saved views or recording rules reference these attributes (for example process.pid, container.id, telemetry.sdk.*)?
+      - Are any downstream exports or enrichments keyed on them?
+      - Protected Infrastructure Explorer labels (cloud.*, host.*, azure.*, gcp.*) are kept — confirm the customer uses Infrastructure Explorer as expected.
+      - Is the estimated saving in units acceptable for the change?
+    sources: [playbook, chart-readme, cx-filtering-costs]
+
+  - id: UNI-GROUPBYATTRS
+    playbookSection: "Universal › 2 groupbyattrs"
+    title: Compact repeated resource blocks with groupbyattrs
+    plain: Some shippers repeat the full resource header on every batch. Compacting them makes requests smaller and the collector more efficient.
+    defaultPhase: 1
+    effort: low
+    owner: DevOps
+    savings: none-units   # efficiency lever; not modelled as unit savings
+    config:
+      processor: { name: groupbyattrs, body: { keys: [] } }
+      placement: before-batch   # always immediately followed by batch
+    verify:
+      - Is a batch processor present immediately after groupbyattrs in each pipeline?
+    sources: [playbook, otel-groupbyattrs]
+
+  - id: UNI-K8SATTR-ALLOWLIST
+    playbookSection: "Universal › 3 k8sattributesprocessor allowlisting"
+    title: Extract only the Kubernetes metadata that is used
+    plain: The collector copies Kubernetes metadata onto every record. Listing only the fields that are queried stops the bloat at the source, so nothing has to be deleted later.
+    defaultPhase: 1
+    effort: low
+    owner: DevOps
+    thresholds: { deleteKeyLinesSignal: 30 }
+    config:
+      # NOTE: the playbook shows this block under the "groupbyattrs" heading by mistake. It is the
+      # allowlisting example and is used here (see SOURCES.md › Playbook vs docs).
+      processor:
+        name: k8sattributes
+        body:
+          extract:
+            metadata: [k8s.pod.name, k8s.namespace.name, k8s.deployment.name, service.name]
+            labels:
+              - { tag_name: app_version, key: app.kubernetes.io/version }
+            annotations: []
+    verify:
+      - Which Kubernetes labels and annotations do the customer's dashboards, alerts and saved views use?
+      - Does anything depend on attributes that will no longer be extracted?
+    sources: [playbook, otel-k8sattributes]
+
+  - id: UNI-MEMLIMIT-BATCH
+    playbookSection: "Universal › 4 memory_limiter + batch"
+    title: Add memory_limiter first and batch last in every pipeline
+    plain: A collector that runs out of memory drops everything during the outage. memory_limiter protects it, and batch sends data efficiently.
+    defaultPhase: 1
+    effort: low
+    owner: DevOps
+    savings: none-units
+    config:
+      memory_limiter: { check_interval: 5s, limit_percentage: 80, spike_limit_percentage: 25 }
+      batch: { send_batch_size: 8192, timeout: 5s }
+    verify:
+      - Are memory requests and limits set on the collector pods so limit_percentage is meaningful?
+    sources: [playbook, otel-memorylimiter, otel-batch]
+
+  - id: UNI-OTLP-COMPRESSION
+    playbookSection: "Universal › 5 OTLP exporter compression"
+    title: Compress exported data
+    plain: Compression reduces network egress. It does not change Coralogix units, because units are measured on data size before compression.
+    defaultPhase: 1
+    effort: low
+    owner: DevOps
+    savings: none-units
+    config:
+      compression: gzip
+      allowed: [gzip, snappy, zstd, none]   # configgrpc README
+    verify:
+      - Is network egress a cost the customer cares about?
+    sources: [playbook, otel-configgrpc]
+
+  - id: UNI-UPGRADE
+    playbookSection: "Requirements › Always recommend the latest chart version"
+    title: Upgrade to the latest Helm chart / collector
+    plain: Newer releases fix bugs and add the presets used in this review. Upgrading first keeps every later change simple.
+    defaultPhase: 2
+    effort: medium
+    owner: DevOps
+    savings: none-units
+    sources: [playbook, chart-changelog, otel-contrib-changelog, otel-core-changelog]
+
+  - id: UNI-PROTECTED-LABEL-REMOVED
+    playbookSection: "Preface › Protected labels"
+    title: Protected label is being removed
+    plain: The current configuration deletes an attribute that Infrastructure Explorer and AWS enrichment rely on. Infrastructure views can break or show gaps.
+    defaultPhase: 1
+    effort: low
+    owner: DevOps
+    priority: high
+    savings: none-units
+    sources: [playbook, cx-infra-explorer-gcp, chart-readme]

@@ -1,0 +1,60 @@
+@tailwind base; @tailwind components; @tailwind utilities;
+
+/*
+ * Palette from the UI Enhancement Proposal (Slate neutrals, Sky accent).
+ * Shades marked "AA" were moved one Tailwind step darker (light) or lighter (dark) so text meets
+ * WCAG AA 4.5:1. Every text/background pair used by the app is checked in scripts/check-contrast.mjs.
+ */
+:root {
+  /* Softer, precise light mode palette */
+  --paper: #F8FAFC; --surface: #FFFFFF; --sunk: #F1F5F9; --ink: #0F172A;
+  --mute: #596A80;            /* AA: proposal #64748B is 4.34:1 on --sunk */
+  --line: #E2E8F0;
+  --rail: #0B1120; --rail-ink: #F8FAFC; --rail-mute: #94A3B8; --rail-line: #1E293B;
+  --refract: #0369A1;         /* AA: proposal sky-500 #0EA5E9 is 2.77:1 with white text */
+  --refract-soft: #E0F2FE; --on-refract: #FFFFFF; --prism: #8B5CF6;
+  --universal: #2563EB;       /* AA: blue-500 → blue-600 */
+  --logs: #047857;            /* AA: emerald-500 → emerald-700 */
+  --traces: #7C3AED;          /* AA: violet-500 → violet-600 */
+  --metrics: #B45309;         /* AA: amber-500 → amber-700 */
+  --p1: #047857; --p2: #B45309; --p3: #C2410C;   /* AA: one-two steps darker */
+  --warn: #9A3412;            /* AA: on --warnbg */
+  --warnbg: #FFEDD5;
+  --bad: #DC2626;             /* AA: red-500 → red-600 */
+  --ok: #047857;
+  --on-color: #FFFFFF;        /* text on pillar/status fills */
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Refined dark mode palette */
+    --paper: #0F172A; --surface: #1E293B; --sunk: #0B1120; --ink: #F8FAFC; --mute: #94A3B8; --line: #334155;
+    --rail: #020617; --rail-ink: #F8FAFC;
+    --rail-mute: #94A3B8;     /* AA: proposal #64748B is 3.9:1 on the near-black rail */
+    --rail-line: #1E293B;
+    --refract: #38BDF8;
+    --refract-soft: #082F49;  /* AA: proposal #0C4A6E is 4.42:1 with sky-400 text */
+    --on-refract: #020617; --prism: #A78BFA;
+    /* Completed (the proposal left these unspecified): 400-level shades of the same hues */
+    --universal: #60A5FA; --logs: #34D399; --traces: #A78BFA; --metrics: #FBBF24;
+    --p1: #34D399; --p2: #FBBF24; --p3: #FB923C;
+    --warn: #FDBA74; --warnbg: #431407; --bad: #F87171; --ok: #34D399;
+    --on-color: #0F172A;
+  }
+}
+html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; scroll-behavior: smooth; }
+html, body, #root { height: 100%; }
+body { background: var(--paper); color: var(--ink); }
+
+/* existing focus and utility classes */
+.tabnum { font-variant-numeric: tabular-nums; }
+:focus-visible { outline: 2px solid var(--prism); outline-offset: 2px; border-radius: 6px; }
+.hatch { background-image: repeating-linear-gradient(135deg, currentColor 0 2px, transparent 2px 7px); }
+.lens-grow { transition: width .6s cubic-bezier(.2,.7,.2,1); }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } * { transition: none !important; animation: none !important; } }
+
+kbd {
+  font: 600 11px/1 'Inter', -apple-system, system-ui, sans-serif;
+  border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 6px; padding: 3px 6px;
+  background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}

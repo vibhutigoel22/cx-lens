@@ -1,0 +1,410 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://coralogix.com/schemas/cx-lens/report-1.0.0.json",
+  "title": "Coralogix Lens report",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "product",
+    "audience",
+    "draft",
+    "header",
+    "intro",
+    "summary",
+    "roadmap",
+    "findings",
+    "overlaps",
+    "combined",
+    "trend",
+    "gaps",
+    "nextSteps"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "1.0.0"
+    },
+    "product": {
+      "type": "string"
+    },
+    "audience": {
+      "enum": [
+        "internal",
+        "customer"
+      ]
+    },
+    "draft": {
+      "type": "boolean"
+    },
+    "header": {
+      "type": "object",
+      "required": [
+        "date",
+        "customer",
+        "environment",
+        "preparedBy"
+      ],
+      "properties": {
+        "date": {
+          "type": "string",
+          "format": "date"
+        },
+        "customer": {
+          "type": "string"
+        },
+        "environment": {
+          "type": "string"
+        },
+        "preparedBy": {
+          "type": "string"
+        }
+      }
+    },
+    "intro": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "currentUnitsPerDay",
+        "identifiedUnitsPerDay",
+        "phase1",
+        "pendingScoping"
+      ],
+      "properties": {
+        "currentUnitsPerDay": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "identifiedUnitsPerDay": {
+          "type": "number"
+        },
+        "identifiedPct": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "phase1": {
+          "type": "object",
+          "properties": {
+            "count": {
+              "type": "integer"
+            },
+            "unitsPerDay": {
+              "type": "number"
+            }
+          }
+        },
+        "pendingScoping": {
+          "type": "integer"
+        }
+      }
+    },
+    "roadmap": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "phase",
+          "name",
+          "cumulativeUnitsPerDay",
+          "findingIds"
+        ],
+        "properties": {
+          "phase": {
+            "enum": [
+              1,
+              2,
+              3
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "goal": {
+            "type": "string"
+          },
+          "timeframe": {
+            "type": "string"
+          },
+          "effort": {
+            "type": "string"
+          },
+          "cumulativeUnitsPerDay": {
+            "type": "number"
+          },
+          "findingIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "versionStatus": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    },
+    "overlaps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "ids",
+          "note"
+        ],
+        "properties": {
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "combined": {
+      "type": "object",
+      "required": [
+        "realistic",
+        "disclaimer"
+      ],
+      "properties": {
+        "largest": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "phase1": {
+          "type": "number"
+        },
+        "realistic": {
+          "type": "number"
+        },
+        "realisticPct": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "disclaimer": {
+          "type": "string"
+        }
+      }
+    },
+    "trend": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "date",
+          "total"
+        ],
+        "properties": {
+          "date": {
+            "type": "string"
+          },
+          "total": {
+            "type": "number"
+          },
+          "logs": {
+            "type": "number"
+          },
+          "traces": {
+            "type": "number"
+          },
+          "metrics": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "upgrade": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "gaps": {
+      "type": "array"
+    },
+    "headroom": {
+      "type": "string"
+    },
+    "nextSteps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "owner",
+          "action",
+          "byWhen"
+        ]
+      }
+    },
+    "eligibility": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "internal": {
+      "type": "object"
+    }
+  },
+  "$defs": {
+    "finding": {
+      "type": "object",
+      "required": [
+        "id",
+        "ruleId",
+        "pillar",
+        "title",
+        "plain",
+        "savings",
+        "phase",
+        "effort",
+        "owner",
+        "verifyStatus",
+        "progress",
+        "nextStep",
+        "sources",
+        "rank"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^(UNI|LOG|SPAN|METRIC)-(\\d+|UPGRADE)$"
+        },
+        "ruleId": {
+          "type": "string"
+        },
+        "pillar": {
+          "enum": [
+            "universal",
+            "logs",
+            "traces",
+            "metrics"
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "plain": {
+          "type": "string"
+        },
+        "savings": {
+          "type": "object",
+          "required": [
+            "kind",
+            "unitsPerDay",
+            "gbPerDay",
+            "basis"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "units",
+                "none-units",
+                "needs-scoping",
+                "severity-only",
+                "not-covered"
+              ]
+            },
+            "unitsPerDay": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "gbPerDay": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "basis": {
+              "type": "string"
+            }
+          }
+        },
+        "phase": {
+          "enum": [
+            1,
+            2,
+            3
+          ]
+        },
+        "effort": {
+          "enum": [
+            "low",
+            "medium",
+            "medium-high",
+            "high"
+          ]
+        },
+        "owner": {
+          "enum": [
+            "DevOps",
+            "App Team"
+          ]
+        },
+        "verifyStatus": {
+          "enum": [
+            "candidate",
+            "verified",
+            "rejected",
+            "needs-scoping"
+          ]
+        },
+        "progress": {
+          "enum": [
+            "not-started",
+            "in-progress",
+            "done",
+            "pending"
+          ]
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "title",
+              "url"
+            ],
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              },
+              "internal": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "rank": {
+          "type": "integer"
+        }
+      }
+    }
+  }
+}

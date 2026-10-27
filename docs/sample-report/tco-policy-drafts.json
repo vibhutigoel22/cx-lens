@@ -1,0 +1,133 @@
+{
+  "note": "DRAFTS ONLY — Coralogix Lens never creates policies. Review, then create with `cx tco create --from-file` or the UI.",
+  "drafts": [
+    {
+      "finding": "SPAN-1",
+      "kind": "tco-trace-policy",
+      "name": "Traces to Low: service is accounting",
+      "json": {
+        "name": "lens-draft-traces-low-accounting",
+        "description": "Draft from Coralogix Lens. Review before creating.",
+        "priority": "PRIORITY_TYPE_LOW",
+        "enabled": false,
+        "applicationRule": null,
+        "spanRules": {
+          "serviceRule": {
+            "ruleTypeId": "RULE_TYPE_ID_IS",
+            "name": "accounting"
+          }
+        },
+        "targets": [
+          {
+            "dataset": "spans",
+            "priority": "PRIORITY_TYPE_LOW",
+            "dataspace": "default"
+          }
+        ]
+      }
+    },
+    {
+      "finding": "SPAN-1",
+      "kind": "tco-trace-policy",
+      "name": "Traces to Low: service is not accounting",
+      "json": {
+        "name": "lens-draft-traces-low-not-accounting",
+        "description": "Draft from Coralogix Lens. Review before creating.",
+        "priority": "PRIORITY_TYPE_LOW",
+        "enabled": false,
+        "applicationRule": null,
+        "spanRules": {
+          "serviceRule": {
+            "ruleTypeId": "RULE_TYPE_ID_IS_NOT",
+            "name": "accounting"
+          }
+        },
+        "targets": [
+          {
+            "dataset": "spans",
+            "priority": "PRIORITY_TYPE_LOW",
+            "dataspace": "default"
+          }
+        ]
+      }
+    },
+    {
+      "finding": "LOG-4",
+      "kind": "tco-log-policy",
+      "name": "Lens draft: default/product-reviews to Medium",
+      "json": {
+        "name": "default-product-reviews-to-medium",
+        "description": "Draft from Coralogix Lens. Review before creating.",
+        "priority": "PRIORITY_TYPE_MEDIUM",
+        "enabled": false,
+        "applicationRule": {
+          "ruleTypeId": "RULE_TYPE_ID_IS",
+          "name": "default"
+        },
+        "subsystemRule": {
+          "ruleTypeId": "RULE_TYPE_ID_IS",
+          "name": "product-reviews"
+        },
+        "targets": [
+          {
+            "dataset": "logs",
+            "priority": "PRIORITY_TYPE_MEDIUM",
+            "dataspace": "default"
+          }
+        ]
+      }
+    },
+    {
+      "finding": "LOG-4",
+      "kind": "tco-log-policy",
+      "name": "Lens draft: default/frontend-proxy to Medium",
+      "json": {
+        "name": "default-frontend-proxy-to-medium",
+        "description": "Draft from Coralogix Lens. Review before creating.",
+        "priority": "PRIORITY_TYPE_MEDIUM",
+        "enabled": false,
+        "applicationRule": {
+          "ruleTypeId": "RULE_TYPE_ID_IS",
+          "name": "default"
+        },
+        "subsystemRule": {
+          "ruleTypeId": "RULE_TYPE_ID_IS",
+          "name": "frontend-proxy"
+        },
+        "targets": [
+          {
+            "dataset": "logs",
+            "priority": "PRIORITY_TYPE_MEDIUM",
+            "dataspace": "default"
+          }
+        ]
+      }
+    },
+    {
+      "finding": "LOG-4",
+      "kind": "tco-log-policy",
+      "name": "Lens draft: default/kafka to Medium",
+      "json": {
+        "name": "default-kafka-to-medium",
+        "description": "Draft from Coralogix Lens. Review before creating.",
+        "priority": "PRIORITY_TYPE_MEDIUM",
+        "enabled": false,
+        "applicationRule": {
+          "ruleTypeId": "RULE_TYPE_ID_IS",
+          "name": "default"
+        },
+        "subsystemRule": {
+          "ruleTypeId": "RULE_TYPE_ID_IS",
+          "name": "kafka"
+        },
+        "targets": [
+          {
+            "dataset": "logs",
+            "priority": "PRIORITY_TYPE_MEDIUM",
+            "dataspace": "default"
+          }
+        ]
+      }
+    }
+  ]
+}

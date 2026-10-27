@@ -1,0 +1,276 @@
+schemaVersion: 1
+pillar: logs
+playbookTab: Logs
+# All DataPrime below was compiled and executed against a live team with cx 0.1.27 on 2026-10-23.
+# `corrected` documents changes from the playbook text (see SOURCES.md › Playbook vs docs).
+rules:
+  - id: LOG-ATTR-REDUCTION
+    playbookSection: "Logs › Type 1 Attribute Reduction / Toolkit 1"
+    title: Remove heavy, unused log attributes
+    plain: Some attributes are attached to every log but never searched. They add size, and size is what units are charged on.
+    defaultPhase: 1
+    effort: low
+    owner: DevOps
+    detect:
+      queries:
+        - id: heavy-attrs-by-subsystem
+          window: 24h
+          limit: 50
+          dataprime: "filter $d.attributes['{attr}'] != null | create byte_length from byteLength($d.attributes['{attr}']:string) | groupby $l.subsystemname aggregate avg(byte_length) as avg_bytes, count() as log_count | orderby log_count desc"
+          corrected: "Playbook used `byteLength($d.resource.attributes:json)` and `$d.subsystemname`. `:json` is not a DataPrime cast type (compile error) and objects cannot be cast to string, so size is measured per attribute; subsystem lives at `$l.subsystemname`."
+      candidateLogAttributes: [log.file.path, log.iostream, logtag, time]   # chart README reduceLogAttributes defaults
+    config:
+      helmPreset: reduceLogAttributes   # top-level preset (chart README). Playbook nests it under logsCollection — corrected.
+    verify:
+      - Do any saved views, alerts or parsing rules use log.file.path, log.iostream or logtag?
+      - Is the per-attribute saving acceptable?
+    sources: [playbook, chart-readme]
+
+  - id: LOG-DUP-KEYS
+    playbookSection: "Logs › Type 2 Duplicated Key Values"
+    title: Remove duplicated attribute values
+    plain: The same value (for example OS type or SDK details) is repeated in several attributes on every log.
+    defaultPhase: 1
+    effort: low
+    owner: DevOps
+    detect:
+      ai: { task: duplicated-fields, sampleSize: 20, window: 1h }   # replaces "paste a sample into an AI tool" with masked claude -p
+    config:
+      processor: transform/delete_keys_resource
+    verify:
+      - Is each removed attribute truly a duplicate of a kept one?
+      - None of the removed keys is a protected label (enforced automatically).
+    sources: [playbook, otel-transform]
+
+  - id: LOG-TEMPLATES
+    playbookSection: "Logs › Type 3 Templates + Schema Explorer"
+    title: Review log templates and field consistency
+    plain: Unstructured or inconsistent logs are hard to search and alert on. Template review finds what to parse, standardise or move to a cheaper tier.
+    defaultPhase: 2
+    effort: medium
+    owner: App Team
+    savings: needs-scoping
+    detect:
+      queries:
+        - id: top-templates
+          window: 24h
+          limit: 25
+          dataprime: "groupby $m.templateid aggregate count() as log_count, sum(byteLength($d.body:string)) as body_bytes | orderby body_bytes desc"
+        - id: top-repeated-bodies
+          window: 24h
+          limit: 25
+          dataprime: "countby $d.body:string | filter _count > 5 | orderby _count desc"
+    checklist: [Parsed?, Meaningful?, Actionable?, Alert coverage?, Redundant or inconsistent fields?, Daily volume?, Correct TCO tier?]
+    verify:
+      - For each top template — parsed, meaningful, actionable, alert coverage?
+    sources: [playbook]
+
+  - id: LOG-MULTILINE
+    playbookSection: "Logs › Type 4 Multiline / Toolkit 3"
+    title: Join multi-line logs into single entries
+    plain: Stack traces and pretty-printed JSON are split into one log per line. Each fragment is billed and none is useful alone.
+    defaultPhase: 1
+    effort: low
+    owner: DevOps
+    thresholds: { shortBodyChars: 10 }
+    detect:
+      queries:
+        - id: short-bodies
+          window: 24h
+          limit: 25
+          dataprime: "filter length($d.body:string) < 10 | groupby $d.body:string as log_body aggregate count() as occurrence_count, sum(byteLength($d.body:string)) as body_bytes | orderby occurrence_count desc"
+        - id: stack-continuations
+          window: 24h
+          limit: 10
+          dataprime: "filter $d.body:string.startsWith('at ') | groupby $l.subsystemname aggregate count() as log_count | orderby log_count desc"
+          corrected: "Playbook used `startsWith('at ':string)`; the literal needs no cast."
+    config:
+      # OpenTelemetry has no "multiline processor". Multiline is configured on the filelog receiver
+      # (multiline.line_start_pattern | line_end_pattern — exactly one of them). Playbook wording corrected.
+      receiver: filelog
+      lineStartPattern: '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}'
+      jsonLineStartPattern: '^\{'
+    verify:
+      - What does the first line of each log event look like for these services (timestamp format)?
+    sources: [playbook, otel-filelog]
+
+  - id: LOG-LOW-VALUE
+    playbookSection: "Logs › Type 5 Low-Value / Toolkit 4"
+    title: Drop low-value repeated logs
+    plain: Messages like OK, 200, pong or health checks are logged at high volume and never help an investigation.
+    defaultPhase: 1
+    effort: low
+    owner: App Team
+    detect:
+      bodies: ['OK', '200', 'healthcheck', 'pong']
+      queries:
+        - id: low-value-bodies
+          window: 24h
+          limit: 25
+          dataprime: "filter ['OK', '200', 'healthcheck', 'pong'].arrayContains($d.body:string) | groupby $d.body:string as body aggregate count() as log_count, sum(byteLength($d.body:string)) as body_bytes"
+          corrected: "Added `:string` cast on $d.body for arrayContains."
+        - id: repeated-success
+          window: 24h
+          limit: 25
+          dataprime: "filter $d.body:string.contains('200 OK') || $d.body:string.contains('health') | groupby $l.subsystemname aggregate count() as log_count | orderby log_count desc"
+    config: { processor: filter/drop-low-value-logs }
+    verify:
+      - Is any alert or dashboard counting these messages (for example as a heartbeat)?
+    sources: [playbook, otel-filter]
+
+  - id: LOG-DEDUP
+    playbookSection: "Logs › Type 6 Deduplicate / Toolkit 2"
+    title: Deduplicate repeated logs
+    plain: The same log is sent more than once, so it is stored and billed more than once.
+    defaultPhase: 1
+    effort: low
+    owner: DevOps
+    thresholds: { bodyRepeat: 5, logIdWindow: 15m }
+    detect:
+      queries:
+        - id: dup-logid
+          window: 15m
+          limit: 50
+          dataprime: "groupby $m.logid aggregate count() as logId_count | filter logId_count > 1"
+          corrected: "Playbook filtered on `$d.logId_count`; the aggregate alias is top-level after groupby."
+        - id: dup-logid-total
+          window: 15m
+          limit: 1
+          dataprime: "groupby $m.logid aggregate count() as c | filter c > 1 | aggregate sum(c - 1) as extra_copies, count() as duplicated_ids"
+        - id: dup-body
+          window: 24h
+          limit: 25
+          dataprime: "countby $d.body:string | filter _count > 5 | orderby _count desc"
+    config:
+      processor: logdedup
+      # Options verified against logdedupprocessor README (stability: alpha, logs).
+      # The playbook's `cache_size` and `mode: exact` DO NOT EXIST and are never emitted.
+      allowedOptions: [interval, conditions, log_count_attribute, include_fields, exclude_fields, timezone, metadata_keys, metadata_cardinality_limit]
+      stability: alpha
+      body: { interval: 30s, log_count_attribute: log_count }
+    verify:
+      - Is the per-event count acceptable (deduplicated logs are emitted once with a log_count attribute)?
+      - Do alerts count individual occurrences of these logs?
+    sources: [playbook, otel-logdedup]
+
+  - id: LOG-OVERSIZED
+    playbookSection: "Logs › Type 7 Big Logs / Toolkit 5"
+    title: Fix oversized logs (over 32 KB)
+    plain: Very large logs are truncated at ingestion, so they cost a lot and the useful tail is lost.
+    defaultPhase: 3
+    effort: medium-high
+    owner: App Team
+    thresholds: { bytes: 32000 }
+    detect:
+      queries:
+        - id: oversized
+          window: 24h
+          limit: 25
+          dataprime: "filter byteLength($d.body:string) > 32000 | groupby $l.applicationname, $l.subsystemname aggregate count() as log_count, sum(byteLength($d.body:string)) as body_bytes | orderby log_count desc"
+          corrected: "Playbook used `byteLength($d:string)`. Casting the whole object to string yields null in DataPrime, so the filter never matches (verified live). Body size is used instead (playbook Toolkit 5 form)."
+    verify:
+      - Which application emits these, and can it log less or split events?
+    sources: [playbook, playbook-template]
+
+  - id: LOG-TCO-FIT
+    playbookSection: "Logs › TAM Workflow Checklist step 8 / What's New"
+    title: Move retained low-value logs to a cheaper TCO tier
+    plain: Logs that must be kept but are rarely searched can move to Medium (Monitoring) or Low (Compliance) instead of being dropped.
+    defaultPhase: 1
+    effort: low
+    owner: DevOps
+    detect:
+      usage: { pillar: logs, tier: high }
+    draft: tco-log-policy
+      # subsystem share used to size candidate policies
+    detectQueries:
+      - id: bytes-by-subsystem
+        window: 24h
+        limit: 20
+        dataprime: "groupby $l.applicationname, $l.subsystemname aggregate count() as log_count, sum(byteLength($d.body:string)) as body_bytes | orderby body_bytes desc"
+    notes:
+      - The legacy TCO Override table is slated for removal (playbook What's New, March 31 2026). Flag customers still using it for migration to Log Policies.
+    verify:
+      - Which applications/subsystems are searched rarely and not alerted on?
+    sources: [playbook, cx-tco, cx-units]
+
+  - id: LOG-SEVERITY
+    playbookSection: "Executive Summary template › LOG-8 pattern"
+    title: Fix misclassified severity
+    plain: Routine events (for example token expiry) logged as Error create noise in error views and alerts.
+    defaultPhase: 1
+    effort: low
+    owner: App Team
+    savings: severity-only
+    detect:
+      queries:
+        - id: error-templates
+          window: 24h
+          limit: 25
+          dataprime: "filter $m.severity == ERROR | groupby $m.templateid aggregate count() as log_count, any_value($d.body:string) as sample | orderby log_count desc"
+    verify:
+      - Is each top error template a real error?
+    sources: [playbook-template]
+
+  - id: LOG-SAVINGS-CALC
+    playbookSection: "Logs › Bonus Cost Savings Calculation / Toolkit 6"
+    title: Per-attribute cost calculation
+    internalOnly: true
+    detect:
+      queries:
+        - id: per-attribute-cost
+          window: 24h
+          limit: 1
+          dataprime: "source logs | create search from $d.attributes['{attr}'] | filter search != null | create byte_length from byteLength(search:string) | aggregate avg(byte_length) as avg_bytes_size, count() as log_count | create gb_usage from ((avg_bytes_size * log_count) / 1000 / 1000 / 1000)"
+          corrected: "Playbook query started with `create` and had no `source logs`; also used `search.byteLength()` on an untyped value. Rewritten with explicit source, cast, and GB (units are computed from GB × official tier rate)."
+    sources: [playbook, cx-units]
+  - id: LOG-BASELINE
+    playbookSection: "Internal — volume baseline used by several checks"
+    title: Log volume baseline
+    internalOnly: true
+    detect:
+      queries:
+        - id: log-count
+          window: 24h
+          limit: 1
+          dataprime: "aggregate count() as log_count, sum(byteLength($d.body:string)) as body_bytes"
+        - id: sample
+          window: 1h
+          limit: 20
+          dataprime: "limit 20"
+        - id: by-platform
+          window: 24h
+          limit: 20
+          dataprime: "groupby $d.resource.attributes['cloud.platform']:string as platform, $d.resource.attributes['k8s.cluster.name']:string as cluster aggregate count() as n"
+    sources: [cx-dataprime]
+  - id: INV-LOGS
+    playbookSection: "Investigate mode — data-driven discovery (validated live with cx 0.1.27)"
+    title: Investigate log contributors
+    internalOnly: true
+    detect:
+      queries:
+        - id: top-templates
+          window: 24h
+          limit: 50
+          dataprime: "groupby $m.templateid aggregate count() as logs, sum(byteLength($d.body:string)) as body_bytes, any_value($l.applicationname) as app, any_value($l.subsystemname) as subsystem, any_value($m.severity) as severity | orderby body_bytes desc"
+        - id: samples
+          window: 24h
+          limit: 5
+          dataprime: "filter $m.templateid == '{template}' | limit 5"
+        - id: validate
+          window: 24h
+          limit: 1
+          dataprime: "filter {expr} | aggregate count() as n, sum(byteLength($d.body:string)) as bytes"
+        - id: matched-samples
+          window: 24h
+          limit: 3
+          dataprime: "filter {expr} | limit 3"
+        - id: validate-severity
+          window: 24h
+          limit: 10
+          dataprime: "filter {expr} | groupby $m.severity as severity aggregate count() as n"
+        - id: validate-truncate
+          window: 24h
+          limit: 1
+          dataprime: "filter ({expr}) && byteLength($d.body:string) > {limit} | aggregate count() as n, sum(byteLength($d.body:string)) as bytes"
+    sources: [cx-dataprime, otel-transform, otel-filter]

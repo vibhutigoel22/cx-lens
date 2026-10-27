@@ -1,0 +1,53 @@
+# Coralogix ECS-EC2 style collector (sample, otelcol-contrib 0.98.0)
+# image: otel/opentelemetry-collector-contrib:0.98.0
+receivers:
+  otlp:
+    protocols:
+      grpc: { endpoint: 0.0.0.0:4317 }
+  filelog:
+    include: [/var/log/app/*.log]
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: app-metrics
+          scrape_interval: 15s
+          static_configs: [{ targets: ['localhost:8080'] }]
+        - job_name: autoscaling-signals
+          scrape_interval: 15s
+          static_configs: [{ targets: ['localhost:9090'] }]
+processors:
+  batch: {}
+  probabilistic_sampler:
+    sampling_percentage: 10
+  resource/drop:
+    attributes:
+      - key: host.name
+        action: delete
+      - key: k8s.pod.uid
+        action: delete
+  filter/health:
+    traces:
+      span:
+        - 'attributes["http.target"] == "/health"'
+exporters:
+  coralogix:
+    domain: "coralogix.in"
+    application_name: "ecs"
+    subsystem_name: "collector"
+connectors:
+  spanmetrics:
+    dimensions_cache_size: 1000
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [filter/health, batch]
+      exporters: [coralogix, spanmetrics]
+    metrics:
+      receivers: [otlp, prometheus, spanmetrics]
+      processors: [batch, probabilistic_sampler]
+      exporters: [coralogix]
+    logs:
+      receivers: [otlp, filelog]
+      processors: [resource/drop, batch]
+      exporters: [coralogix]

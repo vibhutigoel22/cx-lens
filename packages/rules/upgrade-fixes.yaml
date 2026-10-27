@@ -1,0 +1,79 @@
+# Curated, mechanically-safe auto-fixes for breaking/deprecating changes, each tied to an official
+# CHANGELOG or README entry. Anything in the CHANGELOGs NOT matched here is reported as
+# "Manual action needed" with the original changelog text. Never guess.
+schemaVersion: 1
+fixes:
+  - id: filter-legacy-conditions
+    component: filter
+    version: "0.146.0"
+    kind: filter-legacy-to-conditions
+    deprecation: true   # apply whenever target >= version, even if current is already past it
+    change: "Legacy traces.span / logs.log_record / metrics.metric|datapoint (and resource) are deprecated; use <signal>_conditions with context-prefixed paths."
+    source: otel-filter
+  - id: spanmetrics-dimensions-cache
+    component: spanmetrics
+    version: "0.100.0"
+    kind: rename-key
+    deprecation: true
+    from: dimensions_cache_size
+    to: aggregation_cardinality_limit
+    change: "dimensions_cache_size is deprecated; use aggregation_cardinality_limit."
+    source: otel-spanmetrics
+  - id: ottl-base64decode
+    component: ottl
+    version: "0.161.0"
+    kind: ottl-rewrite
+    pattern: 'Base64Decode\(([^()]*)\)'
+    replace: 'Decode($1, "base64")'
+    change: "pkg/ottl: removed deprecated Base64Decode converter; use Decode with base64 encoding."
+    source: otel-contrib-changelog
+  - id: filter-transform-error-mode-default
+    component: [filter, transform]
+    version: "0.153.0"
+    kind: pin-default
+    key: error_mode
+    oldDefault: propagate
+    covers: 'defaultErrorModeIgnore'
+    change: "Default top-level error_mode changed from propagate to ignore (beta in 0.153.0, stable in 0.157.0). Pinned to the old value to keep current behaviour; remove the pin to adopt the new default."
+    source: otel-contrib-changelog
+  - id: prometheus-report-extra-scrape-metrics
+    component: prometheus
+    version: "0.149.0"
+    kind: remove-key
+    key: report_extra_scrape_metrics
+    change: "receiver/prometheus: removed deprecated report_extra_scrape_metrics option."
+    source: otel-contrib-changelog
+  - id: otlp-batcher-removed
+    component: [otlp, otlphttp]
+    version: "0.130.0"
+    kind: manual
+    key: batcher
+    change: "exporter/otlp: deprecated batcher config removed; use sending_queue batching. Settings differ, so this needs a manual decision."
+    source: otel-core-changelog
+  - id: coralogix-batcher-removed
+    component: coralogix
+    version: "0.126.0"
+    kind: manual
+    key: batcher
+    change: "coralogixexporter: deprecated batcher config removed; use sending_queue::batch."
+    source: otel-contrib-changelog
+# Components the changelog scanner looks for, mapped to config component types.
+componentAliases:
+  filter: [processor/filter, filterprocessor]
+  transform: [processor/transform, transformprocessor]
+  tail_sampling: [processor/tail_sampling, processor/tailsampling, tailsamplingprocessor]
+  k8sattributes: [processor/k8sattributes, k8sattributesprocessor]
+  spanmetrics: [connector/spanmetrics, spanmetricsconnector]
+  logdedup: [processor/logdedup, logdedupprocessor]
+  redaction: [processor/redaction, redactionprocessor]
+  groupbyattrs: [processor/groupbyattrs, groupbyattrsprocessor]
+  filelog: [receiver/filelog, filelogreceiver, pkg/stanza]
+  prometheus: [receiver/prometheus, prometheusreceiver]
+  resourcedetection: [processor/resourcedetection, resourcedetectionprocessor]
+  resource: [processor/resource, resourceprocessor]
+  attributes: [processor/attributes, attributesprocessor]
+  coralogix: [exporter/coralogix, coralogixexporter]
+  otlp: [exporter/otlp, otlpexporter]
+  memory_limiter: [processor/memorylimiter, memorylimiterprocessor]
+  batch: [processor/batch, batchprocessor]
+  ottl: [pkg/ottl]

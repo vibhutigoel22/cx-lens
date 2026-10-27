@@ -1,0 +1,37 @@
+# Protected resource attributes — NEVER recommend removing these.
+# Coralogix Infrastructure Explorer, the APM Infrastructure tab and AWS resource
+# enrichment use them to correlate and group infrastructure.
+# Playbook: Telemetry Health & Value Review – TAM Playbook › "Protected labels" callout (preface)
+schemaVersion: 1
+exact:
+  - cloud.provider
+  - cloud.platform
+  - cloud.account.id
+  - cloud.account.name
+  - cloud.region
+  - cloud.availability_zone
+  - host.id
+  - host.name
+  - host.image.id
+  - host.type
+prefixes:
+  # "azure.* and gcp.* infrastructure identifiers"
+  - azure.
+  - gcp.
+reason: >-
+  Used by Coralogix Infrastructure Explorer, the APM Infrastructure tab and AWS
+  resource enrichment to correlate and group infrastructure.
+sources:
+  - title: Telemetry Health & Value Review – TAM Playbook (Protected labels callout)
+    url: https://app.notion.com/p/coralogix/Telemetry-Health-Value-Review-TAM-Playbook-3d0c048defad806ab008eda1bd36b6b4
+    internal: true
+  - title: GCP Infrastructure Explorer
+    url: https://coralogix.com/docs/integrations/gcp/gcp-infrastructure-explorer/
+  - title: Azure Infrastructure Explorer
+    url: https://coralogix.com/docs/integrations/azure/azure-infrastructure-explorer/
+  - title: APM using AWS EC2
+    url: https://coralogix.com/docs/integrations/aws/apm-amazon-ec2/
+  - title: AWS resource enrichment
+    url: https://coralogix.com/docs/user-guides/data-transformation/enrichments/aws-resource-enrichment/
+  - title: otel-integration Helm chart README – Filtering and reducing costs
+    url: https://github.com/coralogix/telemetry-shippers/tree/master/otel-integration/k8s-helm#filtering-and-reducing-costs

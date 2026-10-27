@@ -1,0 +1,191 @@
+--- original-config.yaml
++++ optimized-config.yaml
+@@ -12,11 +12,89 @@
+       enabled: true
+     # Custom denylist copied from an old ticket — note it removes cloud.region (protected!)
+     reduceResourceAttributes:
++      # Coralogix Lens UNI-1: Enable reduceResourceAttributes with the protected-safe custom denylist on every collector (source: https://coralogix.com/docs/integrations/gcp/gcp-infrastructure-explorer/)
++      &cx_reduce_resource_attributes
+       enabled: true
++      pipelines:
++        - metrics
++        - traces
++        - logs
+       denylist:
+-        metrics: [k8s.pod.uid, cloud.region, process.pid]
+-        logs: [k8s.pod.uid, cloud.region]
+-        traces: [k8s.pod.uid]
++        metrics: &cx_denylist_metrics_logs1
++          - container.id
++          - cx.otel_integration.name
++          - faas.id
++          - faas.instance
++          - faas.name
++          - faas.version
++          - k8s.cronjob.uid
++          - k8s.daemonset.uid
++          - k8s.deployment.uid
++          - k8s.hpa.uid
++          - k8s.job.uid
++          - k8s.namespace.uid
++          - k8s.node.uid
++          - k8s.pod.start_time
++          - k8s.pod.uid
++          - k8s.replicaset.uid
++          - k8s.statefulset.uid
++          - os.type
++          - os.version
++          - process.command
++          - process.command_line
++          - process.command_args
++          - process.executable.name
++          - process.executable.path
++          - process.owner
++          - process.pid
++          - process.parent_pid
++          - process.runtime.description
++          - process.runtime.name
++          - process.runtime.version
++          - net.host.name
++          - net.host.port
++          - telemetry.distro.name
++          - telemetry.distro.version
++          - telemetry.sdk.language
++          - telemetry.sdk.name
++          - telemetry.sdk.version
++        logs: *cx_denylist_metrics_logs1
++        traces:
++          - container.id
++          - cx.otel_integration.name
++          - faas.id
++          - faas.instance
++          - faas.name
++          - faas.version
++          - k8s.cronjob.uid
++          - k8s.daemonset.uid
++          - k8s.deployment.uid
++          - k8s.hpa.uid
++          - k8s.job.uid
++          - k8s.namespace.uid
++          - k8s.node.uid
++          - k8s.pod.start_time
++          - k8s.pod.uid
++          - k8s.replicaset.uid
++          - k8s.statefulset.uid
++          - os.type
++          - os.version
++          - process.command
++          - process.command_line
++          - process.command_args
++          - process.executable.name
++          - process.executable.path
++          - process.owner
++          - process.pid
++          - process.parent_pid
++          - process.runtime.description
++          - process.runtime.name
++          - process.runtime.version
++          - net.host.name
++          - net.host.port
++    reduceLogAttributes:
++      # Coralogix Lens LOG-1: Enable reduceLogAttributes (source: https://github.com/coralogix/telemetry-shippers/tree/master/otel-integration/k8s-helm#filtering-and-reducing-costs)
++      enabled: true
+   config:
+     processors:
+       filter/drop-noise:
+@@ -30,6 +108,11 @@
+           - context: log
+             statements:
+               - set(attributes["payload"], Base64Decode(attributes["payload_b64"]))
++      filter/drop-internal-noncritical:
++        # Coralogix Lens SPAN-2: Drop non-error INTERNAL spans in non-critical services (source: https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/pkg/ottl/contexts/ottlspan/README.md)
++        error_mode: ignore
++        trace_conditions:
++          - span.kind.string == "Internal" and span.status.code != STATUS_CODE_ERROR and (resource.attributes["service.name"] == "frontend" or resource.attributes["service.name"] == "load-generator" or resource.attributes["service.name"] == "flagd" or resource.attributes["service.name"] == "email" or resource.attributes["service.name"] == "quote" or resource.attributes["service.name"] == "ad" or resource.attributes["service.name"] == "product-reviews" or resource.attributes["service.name"] == "recommendation")
+     connectors:
+       spanmetrics:
+         dimensions_cache_size: 5000
+@@ -37,14 +120,81 @@
+       otlp/coralogix:
+         endpoint: ingress.coralogix.in:443
+         compression: none
++    service:
++      pipelines:
++        traces:
++          processors:
++            # Coralogix Lens: the chart adds its preset processors to this list. Run `helm template` to confirm the final order before deploying.
++            - filter/drop-internal-noncritical
+ 
+ opentelemetry-cluster-collector:
+   enabled: true
+   presets:
+     # default denylist in use => removes protected cloud.* / host.* labels
+-    reduceResourceAttributes:
+-      enabled: true
++    reduceResourceAttributes: *cx_reduce_resource_attributes
+ 
+ opentelemetry-gateway:
+   enabled: false
++  presets:
++    reduceResourceAttributes: *cx_reduce_resource_attributes
++  config:
++    processors:
++      tail_sampling:
++        # Coralogix Lens SPAN-3: Composite tail sampling (errors, slow, sampled healthy traffic) (source: https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/processor/tailsamplingprocessor)
++        decision_wait: 10s
++        num_traces: 50000
++        policies:
++          - name: keep-critical-errors-100pct
++            type: and
++            and:
++              and_sub_policy:
++                - name: svc
++                  type: string_attribute
++                  string_attribute:
++                    key: service.name
++                    values:
++                      - checkout
++                      - payment
++                - name: err
++                  type: status_code
++                  status_code:
++                    status_codes:
++                      - ERROR
++          - name: keep-errors-1pct
++            type: and
++            and:
++              and_sub_policy:
++                - name: err
++                  type: status_code
++                  status_code:
++                    status_codes:
++                      - ERROR
++                - name: prob
++                  type: probabilistic
++                  probabilistic:
++                    sampling_percentage: 1
++          - name: keep-slow
++            type: latency
++            latency:
++              threshold_ms: 500
++          - name: keep-nonerror-1pct
++            type: and
++            and:
++              and_sub_policy:
++                - name: nonerror
++                  type: status_code
++                  status_code:
++                    status_codes:
++                      - OK
++                      - UNSET
++                - name: prob
++                  type: probabilistic
++                  probabilistic:
++                    sampling_percentage: 1
++    service:
++      pipelines:
++        traces:
++          processors:
++            # Coralogix Lens: the chart adds its preset processors to this list. Run `helm template` to confirm the final order before deploying.
++            - tail_sampling
+ 

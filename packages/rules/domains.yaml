@@ -1,0 +1,18 @@
+# Official Coralogix domain list. Source: Coralogix docs › Coralogix domain
+# https://coralogix.com/docs/user-guides/account-management/account-settings/coralogix-domain/
+# Metrics API host pattern (api.<domain>/metrics/api/v1) verified live against AP1 on 2026-10-23.
+schemaVersion: 1
+regions:
+  us1:  { domain: us1.coralogix.com,     cloudRegion: "AWS us-east-2 (Ohio)",            teamHost: "<team>.app.coralogix.us" }
+  us2:  { domain: us2.coralogix.com,     cloudRegion: "AWS us-west-2 (Oregon)",          teamHost: "<team>.app.cx498.coralogix.com" }
+  us3:  { domain: us3.coralogix.com,     cloudRegion: "GCP us-central1 (Iowa)",          teamHost: "<team>.app.us3.coralogix.com" }
+  eu1:  { domain: eu1.coralogix.com,     cloudRegion: "AWS eu-west-1 (Ireland)",         teamHost: "<team>.coralogix.com" }
+  eu2:  { domain: eu2.coralogix.com,     cloudRegion: "AWS eu-north-1 (Stockholm)",      teamHost: "<team>.app.eu2.coralogix.com" }
+  ap1:  { domain: ap1.coralogix.com,     cloudRegion: "AWS ap-south-1 (Mumbai)",         teamHost: "<team>.app.coralogix.in" }
+  ap2:  { domain: ap2.coralogix.com,     cloudRegion: "AWS ap-southeast-1 (Singapore)",  teamHost: "<team>.app.coralogixsg.com" }
+  ap3:  { domain: ap3.coralogix.com,     cloudRegion: "AWS ap-southeast-3 (Jakarta)",    teamHost: "<team>.app.ap3.coralogix.com" }
+  gov1: { domain: gov1.coralogixgov.us,  cloudRegion: "AWS GovCloud us-gov-west-1",      teamHost: "<team>.app.gov1.coralogixgov.us" }
+metricsApi:
+  template: "https://api.{domain}/metrics/api/v1"
+  minDelayMs: 100   # playbook script sleeps 0.1s between services; respected as a floor
+  retryOn: [429, 503]

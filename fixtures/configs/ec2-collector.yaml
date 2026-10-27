@@ -1,0 +1,28 @@
+# Coralogix EC2 collector (sample) — image: otel/opentelemetry-collector-contrib:0.120.0
+receivers:
+  otlp:
+    protocols: { grpc: { endpoint: 0.0.0.0:4317 }, http: { endpoint: 0.0.0.0:4318 } }
+  hostmetrics:
+    collection_interval: 30s
+    scrapers: { cpu: {}, memory: {}, filesystem: {} }
+processors:
+  resourcedetection:
+    detectors: [ec2, system]
+  batch: { send_batch_size: 1024, timeout: 1s }
+  transform/strip:
+    error_mode: ignore
+    metric_statements:
+      - context: resource
+        statements:
+          - delete_key(attributes, "host.id")      # removes a protected label
+          - delete_key(attributes, "process.pid")
+exporters:
+  coralogix:
+    domain: "coralogix.in"
+    application_name: "ec2"
+    subsystem_name: "hosts"
+service:
+  pipelines:
+    metrics: { receivers: [otlp, hostmetrics], processors: [batch, resourcedetection, transform/strip], exporters: [coralogix] }
+    traces:  { receivers: [otlp], processors: [resourcedetection, batch], exporters: [coralogix] }
+    logs:    { receivers: [otlp], processors: [resourcedetection, batch], exporters: [coralogix] }

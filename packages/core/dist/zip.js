@@ -1,0 +1,63 @@
+import { deflateRawSync } from 'node:zlib';
+/** Minimal ZIP writer (DEFLATE, UTF-8 names) so exports can be downloaded as one file. No dependencies. */
+const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++)
+        c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    t[n] = c >>> 0;
+} return t; })();
+const crc32 = (b) => { let c = 0xffffffff; for (const x of b)
+    c = CRC[(c ^ x) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+function dosTime(d) { return { time: (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1), date: ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate() }; }
+export function createZip(files, when = new Date()) {
+    const { time, date } = dosTime(when);
+    const locals = [];
+    const central = [];
+    let offset = 0;
+    for (const [name, content] of Object.entries(files)) {
+        const data = Buffer.isBuffer(content) ? content : Buffer.from(content, 'utf8');
+        const comp = deflateRawSync(data);
+        const nm = Buffer.from(name, 'utf8');
+        const crc = crc32(data);
+        const lh = Buffer.alloc(30);
+        lh.writeUInt32LE(0x04034b50, 0);
+        lh.writeUInt16LE(20, 4);
+        lh.writeUInt16LE(0x0800, 6);
+        lh.writeUInt16LE(8, 8);
+        lh.writeUInt16LE(time, 10);
+        lh.writeUInt16LE(date, 12);
+        lh.writeUInt32LE(crc, 14);
+        lh.writeUInt32LE(comp.length, 18);
+        lh.writeUInt32LE(data.length, 22);
+        lh.writeUInt16LE(nm.length, 26);
+        lh.writeUInt16LE(0, 28);
+        locals.push(lh, nm, comp);
+        const ch = Buffer.alloc(46);
+        ch.writeUInt32LE(0x02014b50, 0);
+        ch.writeUInt16LE(20, 4);
+        ch.writeUInt16LE(20, 6);
+        ch.writeUInt16LE(0x0800, 8);
+        ch.writeUInt16LE(8, 10);
+        ch.writeUInt16LE(time, 12);
+        ch.writeUInt16LE(date, 14);
+        ch.writeUInt32LE(crc, 16);
+        ch.writeUInt32LE(comp.length, 20);
+        ch.writeUInt32LE(data.length, 24);
+        ch.writeUInt16LE(nm.length, 28);
+        ch.writeUInt32LE(0, 30);
+        ch.writeUInt32LE(0, 34);
+        ch.writeUInt32LE(0, 38);
+        ch.writeUInt32LE(offset, 42);
+        central.push(ch, nm);
+        offset += 30 + nm.length + comp.length;
+    }
+    const cd = Buffer.concat(central);
+    const end = Buffer.alloc(22);
+    end.writeUInt32LE(0x06054b50, 0);
+    end.writeUInt16LE(Object.keys(files).length, 8);
+    end.writeUInt16LE(Object.keys(files).length, 10);
+    end.writeUInt32LE(cd.length, 12);
+    end.writeUInt32LE(offset, 16);
+    return Buffer.concat([...locals, cd, end]);
+}
+//# sourceMappingURL=zip.js.map

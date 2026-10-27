@@ -1,0 +1,17 @@
+# Official unit conversion rules. Never invent ratios.
+# Source: Coralogix docs › How usage is measured / Data usage (checked 2026-10-23).
+# Cross-checked against live `cx usage daily` data: highLogsGbs*0.75 == highLogsUnits,
+# mediumTracingGbs*0.25 == mediumTracingUnits, highMetricsGbs/30 == highMetricsUnits.
+schemaVersion: 1
+unitUsd: 1.50
+logs:        { high: 0.75, medium: 0.32, low: 0.12, blocked: 0.08 }   # units per GB
+traces:      { high: 0.50, medium: 0.25, low: 0.10 }                  # units per GB
+metrics:     { default: 0.0333333333 }                                # 30 GB = 1 unit
+# Data that matches no TCO policy is treated as high priority (same source).
+defaultTier: high
+estimateTolerancePct: 20   # Executive Summary template disclaimer: estimates can vary by about ±20%
+sources:
+  - title: Coralogix docs – How usage is measured
+    url: https://coralogix.com/docs/user-guides/account-management/organization-management/usage-and-quota/how-usage-is-measured/
+  - title: Coralogix docs – Data usage
+    url: https://coralogix.com/docs/user-guides/account-management/payment-and-billing/data-usage/
