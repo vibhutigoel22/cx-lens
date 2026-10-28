@@ -1,0 +1,35 @@
+CORALOGIX LENS __VERSION__ — INSTALL
+
+1. Drag "Coralogix Lens" onto the Applications folder.
+
+2. The first time only: macOS blocks apps that are not signed by an Apple developer
+   account. To allow it, do ONE of these:
+   a) Open Coralogix Lens once (it will be blocked), then go to
+      System Settings > Privacy & Security, scroll down and click "Open Anyway".
+   b) Or run this in Terminal:
+      xattr -dr com.apple.quarantine "/Applications/Coralogix Lens.app"
+
+3. Open Coralogix Lens. It starts its local engine (127.0.0.1 only) and opens the
+   app window in Chrome, Edge or Brave (app mode), or your default browser.
+
+USING IT
+- No Coralogix account needed to try it: choose "demo data" on the Connect step.
+- For live teams, install the cx CLI:   brew install coralogix/tap/cx
+- For AI steps (Investigate, skills), install and sign in to the claude CLI:
+      npm install -g @anthropic-ai/claude-code   then run   claude   once
+- Optional: helm and otelcol-contrib (to validate generated configs).
+
+STOPPING
+Open Coralogix Lens again while it is running and choose "Stop Coralogix Lens".
+
+COMMAND LINE (optional)
+  sudo mkdir -p /usr/local/bin
+  sudo ln -sf "/Applications/Coralogix Lens.app/Contents/Resources/bin/cxlens" /usr/local/bin/cxlens
+  cxlens analyze --demo --pillars universal,logs,traces,metrics --out ~/Desktop/lens-demo
+
+FILES
+  Data and drafts:  ~/.cxlens
+  Engine log:       ~/Library/Logs/Coralogix Lens/engine.log
+  API keys:         macOS Keychain (never stored in plain text)
+
+Runs on macOS 12 or later, Apple Silicon and Intel. Includes Node.js __NODE_VERSION__ (MIT licence).
