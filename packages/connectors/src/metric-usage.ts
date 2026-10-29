@@ -4,7 +4,6 @@ import { fileURLToPath } from 'node:url';
 import * as grpc from '@grpc/grpc-js';
 import * as protoLoader from '@grpc/proto-loader';
 import { loadCatalogue, type MetricUsageClient, type MetricUsageRow, type MetricUsageDay } from '@cx-lens/core';
-import { getSecret } from './keychain.js';
 import { redactSecrets } from './exec.js';
 
 /**
@@ -15,7 +14,7 @@ import { redactSecrets } from './exec.js';
 const here = dirname(fileURLToPath(import.meta.url));
 const protoset = () => [process.env.CXLENS_PROTO_DIR && join(process.env.CXLENS_PROTO_DIR, 'metric-usages.protoset'), join(here, '../proto/metric-usages.protoset')].find((p) => p && existsSync(p))!;
 export const usageKeyAccount = (team: string) => `${team}:metric-usage`;
-export async function usageKey(team: string): Promise<string | null> { return process.env.CXLENS_USAGE_KEY ?? (await getSecret(usageKeyAccount(team)).catch(() => null)); }
+export async function usageKey(team: string): Promise<string | null> { const { resolveUsageKey } = await import('./usage-keys.js'); return resolveUsageKey(team); }
 
 const day = (d: Date) => ({ year: d.getUTCFullYear(), month: d.getUTCMonth() + 1, day: d.getUTCDate() });
 const num = (v: unknown) => Number(v ?? 0) || 0;
@@ -32,7 +31,7 @@ export class MetricUsageApi implements MetricUsageClient {
   }
   private call(method: string, req: any): Promise<any> {
     const md = new grpc.Metadata(); md.set('authorization', this.key);
-    return new Promise((res, rej) => this.client[method](req, md, { deadline: Date.now() + 60000 }, (e: any, out: any) => (e ? rej(new Error(redactSecrets(`Metric Usage API ${method}: ${e.details ?? e.message}`))) : res(out))));
+    return new Promise((res, rej) => this.client[method](req, md, { deadline: Date.now() + 60000 }, (e: any, out: any) => (e ? rej(Object.assign(new Error(redactSecrets(`Metric Usage API ${method}: ${e.details ?? e.message}`)), { code: e.code })) : res(out))));
   }
   /** Last complete UTC day: today's dataset is still filling. */
   private common(length: number) { const d = new Date(Date.now() - 864e5); return { start_date: day(d), end_date: day(d), start_offset: 0, length, order_by: 'USAGE', ordering: 'DESCENDING' }; }
@@ -48,6 +47,7 @@ export class MetricUsageApi implements MetricUsageClient {
     const o = await this.call('GetMetricUsagesByLabel', { common: this.common(length), label_name: label }); const u = o.daily_usages?.[0] ?? {};
     return (u.metric_usages ?? []).map((m: any) => row(m.metric_name, m.usage));
   }
-  async healthCheck() { try { const l = await this.labels(1); return { ok: true, detail: `${l.rows.length ? 'Exact metric usage available' : 'No metric usage yet'} (${l.totalUnits.toFixed(2)} metric units yesterday)` }; } catch (e) { return { ok: false, detail: (e as Error).message }; } }
+  async healthCheck() { try { const l = await this.labels(1); return { ok: true, detail: `Key works: ${l.totalUnits.toFixed(2)} metric units yesterday${l.rows.length ? '' : ' (no label usage yet)'}.` }; }
+    catch (e: any) { const c = e?.code; return { ok: false, detail: c === 16 || c === 7 ? 'The key was rejected. Check it is for this team and has the DataAnalytics preset.' : c === 14 || c === 4 ? 'Could not reach the Metric Usage API. Check the network and the team’s region.' : `The Metric Usage API returned an error. ${String(e?.message ?? '').replace(/^Metric Usage API \w+: /, 'Details: ')}` }; } }
 }
 export async function metricUsageFor(team: { name: string; region: string }): Promise<MetricUsageApi | null> { const k = await usageKey(team.name); return k ? new MetricUsageApi(team.region, k) : null; }

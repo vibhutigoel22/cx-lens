@@ -6,7 +6,7 @@ import { join, extname, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { BRAND, runAssessment, produceOutputs, createZip, reportBaseName, resolveLatest, parseConfig, writeConfig, diffLines, buildReport, scrubReport, type Assessment, type Pillar, type DeploymentType } from '@cx-lens/core';
-import { buildConnector, metricUsageFor, usageKeyAccount, MockAdapter, CxCliAdapter, ClaudeCliAdapter, resolveKey, setSecret, keychainAvailable, which } from '@cx-lens/connectors';
+import { buildConnector, metricUsageFor, usageKeyAccount, listUsageKeys, addUsageKey, selectUsageKey, removeUsageKey, MockAdapter, CxCliAdapter, ClaudeCliAdapter, resolveKey, setSecret, keychainAvailable, which } from '@cx-lens/connectors';
 import { openapi } from './openapi.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -56,6 +56,12 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
       const metrics = cx.ok ? (cxa.has('metrics') ? { ok: true, detail: 'Through cx (PromQL)' } : { ok: false, detail: 'This cx version has no `metrics` command. Update cx.' }) : { ok: false, detail: 'Needs cx.' };
       return send(res, 200, { cx, claude, metrics, helm: !!which('helm'), otelcol: !!(which('otelcol-contrib') || which('otelcol')), keychain: keychainAvailable() });
     }
+    // Saved Metric Usage API keys: names and team assignments only; the keys stay in the Keychain.
+    if (p === '/api/usage-keys' && req.method === 'GET') return send(res, 200, { ...listUsageKeys(url.searchParams.get('team') ?? undefined), keychain: keychainAvailable() });
+    if (p === '/api/usage-keys' && req.method === 'POST') { const b = await body(req); if (!b.label || !b.apiKey) return send(res, 400, { error: 'A name and a key are required.' }); const e = await addUsageKey(String(b.label), String(b.apiKey), b.team ? String(b.team) : undefined); return send(res, 201, e); }
+    if (p === '/api/usage-keys/select' && req.method === 'PUT') { const b = await body(req); selectUsageKey(String(b.team), b.id ?? null); return send(res, 200, listUsageKeys(String(b.team))); }
+    if (p === '/api/usage-keys/test' && req.method === 'GET') { const team = { name: url.searchParams.get('team') ?? '', region: url.searchParams.get('region') ?? 'ap1' }; const mu = await metricUsageFor(team).catch((e) => { throw e; }); return send(res, 200, mu ? await mu.healthCheck() : { ok: false, detail: 'No key selected for this team.' }); }
+    const uk = p.match(/^\/api\/usage-keys\/([\w-]+)$/); if (uk && req.method === 'DELETE') { await removeUsageKey(uk[1]); return send(res, 200, { deleted: uk[1] }); }
     if (p === '/api/prereqs') {
       const team = { name: url.searchParams.get('team') ?? 'default', region: url.searchParams.get('region') ?? 'ap1', profile: url.searchParams.get('team') ?? undefined };
       const checks: { id: string; label: string; ok: boolean; required: boolean; detail: string; fix?: string }[] = [];

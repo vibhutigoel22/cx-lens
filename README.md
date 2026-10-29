@@ -1,624 +1,246 @@
 # Coralogix Lens
 
-**A clear view of which telemetry is worth keeping.**
+<img src="brand/icon-256.png" width="96" align="right" alt="Coralogix Lens icon">
 
-Coralogix Lens is a macOS app that automates the *Telemetry Health & Value Review – TAM Playbook*. It reviews a customer's logs, traces and metrics, finds telemetry that is noisy, duplicated or too expensive for the value it gives, and writes the collector and Helm changes to fix it. It then turns the results into a customer-ready report, phased into Quick Wins → Coordinated Changes → Strategic work.
+**A clear view of which telemetry is worth keeping.** Coralogix Lens automates the *Telemetry Health & Value Review – TAM Playbook*: a proactive posture review across logs, traces and metrics. It runs the playbook's discovery queries, respects the protected Infrastructure Explorer labels, drafts collector and Helm changes, sizes the impact in Coralogix units, upgrades out-of-date configs, and writes the customer-ready report phased into Quick Wins → Coordinated → Strategic.
 
-It is not only a cost-cutting tool. Cleaner, better-structured telemetry makes troubleshooting and alerting easier, and the quota it frees up can be spent on new services, signals and Coralogix features.
+It follows the playbook's method honestly:
 
-| | |
-|---|---|
-| Version | 0.1.0 |
-| Installer | `Coralogix-Lens-0.1.0.dmg` (about 72 MB) |
-| Runs on | macOS 12 Monterey or later, Apple Silicon (M1–M4) and Intel |
-| Includes | Node.js 22.23.4 runtime (you do not need to install Node) |
-| CLI command | `cxlens` |
-| Bundle ID | `com.coralogix.lens` |
-
----
-
-## Contents
-
-1. [Install and run the DMG](#1-install-and-run-the-dmg)
-2. [Prerequisites for live Coralogix teams](#2-prerequisites-for-live-coralogix-teams)
-3. [Using the app, step by step](#3-using-the-app-step-by-step)
-4. [Using the command line (cxlens)](#4-using-the-command-line-cxlens)
-5. [What Lens checks](#5-what-lens-checks)
-6. [What Lens produces](#6-what-lens-produces)
-7. [Safety rules](#7-safety-rules)
-8. [Where Lens keeps its files](#8-where-lens-keeps-its-files)
-9. [Troubleshooting](#9-troubleshooting)
-10. [Uninstalling](#10-uninstalling)
-11. [Architecture](#11-architecture)
-12. [Building from source](#12-building-from-source)
-13. [Extending Lens](#13-extending-lens)
-14. [Sources](#14-sources)
-
----
-
-## 1. Install and run the DMG
-
-### Step 1: Open the DMG
-
-Double-click `Coralogix-Lens-0.1.0.dmg`. A window opens with three items: **Coralogix Lens**, a shortcut to **Applications**, and **Read Me First.txt**.
-
-### Step 2: Copy the app
-
-Drag **Coralogix Lens** onto the **Applications** shortcut. Then eject the DMG (click the eject icon next to it in the Finder sidebar).
-
-### Step 3: Allow the app the first time
-
-The app is not signed with an Apple Developer ID, so macOS blocks it the first time. You only need to do this once. Choose **one** of these two options.
-
-**Option A: through System Settings**
-
-1. Open **Coralogix Lens** from Applications. macOS shows a message that it cannot be opened. Click **Done** (or **OK**).
-2. Open **System Settings → Privacy & Security**.
-3. Scroll down to the Security section. You will see a line about "Coralogix Lens" being blocked. Click **Open Anyway**.
-4. Enter your Mac password if asked, then click **Open Anyway** again.
-
-**Option B: one command in Terminal**
-
-Open Terminal (Applications → Utilities → Terminal) and run:
-
-```bash
-xattr -dr com.apple.quarantine "/Applications/Coralogix Lens.app"
-```
-
-This removes the "downloaded from the internet" flag, so macOS opens the app normally.
-
-### Step 4: Open Coralogix Lens
-
-Double-click **Coralogix Lens** in Applications (or find it with Spotlight: ⌘ Space, type "Coralogix Lens").
-
-What happens:
-
-1. Lens starts its local engine in the background. The engine listens on `127.0.0.1` only, so nothing outside your Mac can reach it.
-2. After a second or two, the app window opens.
-   - If you have Google Chrome, Microsoft Edge, Brave or Chromium, the window opens in **app mode**: a clean window with no tabs or address bar.
-   - Otherwise it opens in your default browser (for example Safari).
-3. The engine usually uses port `4319`. If that port is busy, Lens picks a free one.
-
-Lens has no Dock icon. The engine runs quietly in the background until you stop it.
-
-### Step 5: Try it with demo data
-
-You do not need a Coralogix account to try Lens. On the **Connect** step, choose **demo data**, then go through the steps. The demo uses recorded, anonymised data and a sample Helm config.
-
-### Reopening and stopping
-
-- **To reopen the window:** open Coralogix Lens again. A small dialog says it is already running. Click **Open Window**.
-- **To stop Lens:** open Coralogix Lens again and click **Stop Coralogix Lens**. You will see a notification that the engine has stopped.
-
----
-
-## 2. Prerequisites for live Coralogix teams
-
-Demo mode needs nothing extra. To review a real customer team, install the tools below. Lens checks them for you on the **Connect** step (click **Check prerequisites**).
-
-| Tool | Required? | What Lens uses it for | How to install |
-|---|---|---|---|
-| **cx** (Coralogix CLI) | Required for live teams | All read-only discovery queries for logs, spans, metrics (PromQL) and usage | `brew install coralogix/tap/cx` then `cx profiles add <name> --region <region>` |
-| **claude** (Claude Code CLI) | Optional | AI review of masked samples (Investigate) and the TAM skill plugins | `npm install -g @anthropic-ai/claude-code`, then run `claude` once to sign in |
-| **helm** | Optional | Rendering Helm values to validate the final collector config | `brew install helm` |
-| **otelcol-contrib** | Optional | Running `otelcol-contrib validate` on generated configs | Download the `darwin_arm64` (Apple Silicon) or `darwin_amd64` (Intel) build from the [opentelemetry-collector-releases](https://github.com/open-telemetry/opentelemetry-collector-releases/releases) page, unpack it, and move `otelcol-contrib` to `/usr/local/bin` |
-
-Notes:
-
-- Coralogix access needs **read permissions only**, as the playbook requires.
-- Lens uses cx's own sign-in (OAuth or API key). It never reads or stores your cx key.
-- Lens loads the same `PATH` as your Terminal, so tools installed with Homebrew, npm or in `~/.local/bin` are found automatically.
-- **Exact metric usage (optional):** for exact per-label metric units, add an API key with the **DataAnalytics** preset under *Exact metric usage* on the Connect step. It is stored in the macOS Keychain. Without it, Lens estimates metric savings from series counts.
-
----
-
-## 3. Using the app, step by step
-
-Lens follows the playbook's three stages and is honest about which parts are automated:
-
-| Stage | Who does it | What happens |
+| Stage | Who | What Lens does |
 |---|---|---|
-| **Assess** | Lens (automated) | Runs read-only queries and analyses the config. Nothing changes in the customer's environment. |
-| **Verify** | TAM and customer | One card per finding with evidence, estimated units and a checklist. Each finding is marked Verified, Rejected or Needs scoping. |
-| **Remediate** | TAM and customer | Only Verified findings go into the generated config and the customer report, packaged into three phases. |
-
-The app walks you through seven steps.
-
-**1. Connect.** Pick a Coralogix team (a cx profile) or choose demo data. Status badges show whether cx, claude and metrics access are working. You can also resume or delete saved drafts here.
-
-**2. Customer context.** Enter the customer name, environment, who the report is prepared by, and the audience. Tick every deployment type the customer uses: Kubernetes with the Coralogix Helm chart (default), ECS, EC2 or standalone collector. Mark which services are critical; several trace rules use this. If the customer is close to renewal, or their team cannot take part in Verify, Lens shows a gentle warning (it does not block you).
-
-**3. Choose pillars.** Pick Universal (recommended first, pre-selected), Logs, Traces and Metrics. You can also switch on **Investigate**, which uses Claude to look at the biggest real contributors in the data, and turn each TAM skill on or off.
-
-**4. Config and versions (optional).** Drop, paste or browse to the customer's config: Coralogix `values.yaml`, an OpenTelemetry Collector `config.yaml`, or another shipper config such as Fluent Bit. Lens detects the format and version and shows a badge such as "Up to date" or "3 versions behind". Here you also set the analysis window (default last 24 hours for volume checks, 15 minutes for duplicate checks) and the row limit per query. Without a config, Lens still runs the assessment and writes fresh config snippets.
-
-**5. Run Assess.** Each check shows live progress: waiting, running, done, skipped or failed. Click any check to see the exact query it ran.
-
-**6. Verify.** One card per finding, with evidence, estimated Coralogix units per day, and a checklist to go through with the customer:
-- Does the customer rely on this attribute, log, span or metric (dashboards, alerts, saved queries, recording rules, exports)?
-- Does a Coralogix feature depend on it?
-- Is the estimated effect acceptable?
-
-Mark each finding **Verified**, **Rejected** or **Needs scoping**. Protected-label warnings appear in an orange banner.
-
-**7. Remediate and report.** See the phased roadmap, the config diff, the upgrade section (if the customer is behind), and export everything. **Download all** gives a single zip. **Download all as draft** includes unverified findings and marks every report DRAFT.
-
-The three phases are decided by effort, not by size, so the biggest saving can sit in Phase 2:
-
-| Phase | What it means |
-|---|---|
-| 🟢 Phase 1 – Quick Wins | Config-only changes, no application changes |
-| 🟡 Phase 2 – Coordinated Changes | Helm upgrade, collector redeploy, or light cross-team review |
-| 🟠 Phase 3 – Strategic | Application code changes or architectural decisions |
-
-**Handy shortcuts and features:**
-- **Save draft** (⌘S) at any step. Drafts hold the customer details, config, current step and Verify decisions. They never contain API keys.
-- **Start a new review** clears everything and returns to Connect (it offers to save a draft first).
-- Finding status (🔴 Not started, 🟡 In progress, 🟢 Done, ⚪ Pending) can be updated later. Re-running the assessment refreshes the report, because the playbook says the report should be revisited, not used as a one-time snapshot.
-- **Re-run in 24 hours** repeats the metric label analysis after changes and shows before and after series counts.
-- **PDF:** open an HTML report and use File → Print → Save as PDF.
+| **Assess** | Automated | Read-only queries (cx `--read-only`), Metrics API, config analysis. Nothing changes in the customer's environment. |
+| **Verify** | TAM + customer | One card per finding with evidence, units, and the verify checklist. Status: Candidate → Verified / Rejected / Needs scoping. |
+| **Remediate** | TAM + customer | Only **Verified** findings reach the generated config and the customer report (or a TAM override with a DRAFT watermark). |
 
 ---
 
-## 4. Using the command line (cxlens)
-
-The app includes the `cxlens` command-line tool. To use it from any Terminal window, link it once:
+## Quick start
 
 ```bash
-sudo mkdir -p /usr/local/bin
-sudo ln -sf "/Applications/Coralogix Lens.app/Contents/Resources/bin/cxlens" /usr/local/bin/cxlens
+npm install
+npm run build          # core, connectors, api, cli, ui
+npm test               # 42 unit/golden/upgrade/overlap tests (Vitest)
+npm run e2e            # full UI flow in Chromium, light + dark (Playwright)
+
+# Try it without an account (recorded, anonymised data):
+node apps/cli/dist/index.js analyze --demo --config fixtures/configs/helm-values-old.yaml --verify all --out ./demo-report
+
+# Open the app in a browser (the API serves the UI on 127.0.0.1 only):
+npm run serve          # → http://127.0.0.1:4319
 ```
 
-Try it with demo data:
+### Prerequisites
 
-```bash
-cxlens analyze --demo --pillars universal,logs,traces,metrics --out ~/Desktop/lens-demo
-```
-
-A full live review:
-
-```bash
-cxlens analyze --pillars universal,logs,traces,metrics \
-  --team <cx profile> --region ap1 \
-  --config ./values.yaml --deployment helm \
-  --customer "Acme" --env prod --prepared-by "Jane TAM" \
-  --critical checkout,payment \
-  --out ./report
-```
-
-Other commands:
-
-```bash
-cxlens doctor --team <profile>                        # check cx, claude, metrics access and latest versions
-cxlens versions --refresh                             # latest Helm chart and OTel Collector (24 h cache)
-cxlens recheck --team <profile> --before ./report     # 24 h post-change label re-run, before/after series
-cxlens teams add <name> --region ap1                  # store an API key in the macOS Keychain
-```
-
-Useful flags:
-
-| Flag | What it does |
-|---|---|
-| `--window 24h` | Volume-check window, 1 hour to 7 days |
-| `--from … --to …` | Custom UTC time range instead of `--window` |
-| `--dup-window 15m` | Duplicate-check window, 1 to 60 minutes |
-| `--row-limit 200` | Rows per query |
-| `--deployment helm,ecs,ec2` | Several deployment types; pair with `--config helm=values.yaml --config ecs=ecs.yaml` |
-| `--otel-version 0.98.0` / `--chart-version 0.0.300` | Set versions when they cannot be detected |
-| `--span-metric db_calls_total` | Span metric for the label analyzer (default `calls_total`) |
-| `--verify all` or `--verify LOG-1,SPAN-2` | Mark findings as Verified from the command line |
-| `--state verify.json` | Load saved Verify decisions |
-| `--allow-draft` | Include unverified findings, with a DRAFT watermark |
-| `--investigate [n]` | Run Investigate on the top *n* contributors |
-| `--vendor <name>`, `--no-skills`, `--no-ai` | Control TAM skills and Claude use |
-| `--near-renewal`, `--no-verify-team` | Show the playbook's eligibility warnings |
-| `--internal-terms "jane,acme-internal"` | Extra words to strip from the customer-ready report |
-| `--audience leadership` | Who the summary slide is for |
-| `--zip` | Also write one zip with every output |
-
----
-
-## 5. What Lens checks
-
-Every finding has an ID that starts with its pillar: `UNI-`, `LOG-`, `SPAN-` or `METRIC-`. Investigate findings start with `INV-`.
-
-### Universal (run first; helps every signal)
-
-| ID | Check | Default phase |
+| Tool | Needed for | Install |
 |---|---|---|
-| UNI-REDUCE-RESOURCE-ATTRS | `reduceResourceAttributes` missing, using the default denylist, or not on all three collectors | 🟡 2 |
-| UNI-GROUPBYATTRS | Repeated identical Resource/Scope blocks; compact with `groupbyattrs`, then `batch` | 🟢 1 |
-| UNI-K8SATTR-ALLOWLIST | `k8sattributes` extracting everything; allowlist only what is used | 🟢 1 |
-| UNI-MEMLIMIT-BATCH | `memory_limiter` and `batch` missing or in the wrong order | 🟢 1 |
-| UNI-OTLP-COMPRESSION | Exporter without compression (saves network egress, not Coralogix units) | 🟢 1 |
-| UNI-UPGRADE | Helm chart or collector out of date | 🟡 2 |
-| UNI-PROTECTED-LABEL-REMOVED | Current config already deletes a protected label (high priority) | 🟢 1 |
+| Node.js ≥ 20 | Engine, API, CLI | nodejs.org |
+| **cx** (Coralogix CLI) | Discovery queries, metrics (PromQL via `cx metrics query`), usage, TCO/SLO/E2M reads. Lens uses cx’s own sign-in (OAuth or API key, Keychain or file) and never reads the key | `brew install coralogix/tap/cx`, then `cx profiles add <name> --region <r>` ([docs](https://coralogix.com/docs/external/cx-cli/)) |
+| claude (Claude Code CLI), optional | AI review of masked log samples; skill plugins | Claude Code docs |
+| helm, optional | Rendering Helm values to validate final collector configs | helm.sh |
+| otelcol-contrib, optional | `otelcol-contrib validate` on generated collector configs | Not in Homebrew. Download from the [releases page](https://github.com/open-telemetry/opentelemetry-collector-releases/releases) ([official macOS steps](https://opentelemetry.io/docs/collector/install/binary/macos/)): `curl --proto '=https' --tlsv1.2 -fOL https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.163.2/otelcol-contrib_0.163.2_darwin_arm64.tar.gz && tar -xvf otelcol-contrib_0.163.2_darwin_arm64.tar.gz otelcol-contrib && sudo mv otelcol-contrib /usr/local/bin/` (Intel: `darwin_amd64`) |
+| Rust + Tauri CLI | Building the macOS app | `npm run desktop:build` on a Mac |
 
-### Logs
+Coralogix access needs **read** permissions only, as the playbook requires. Sign in once with `cx profiles add` (OAuth or API key); Lens needs nothing else.
 
-| ID | Check |
-|---|---|
-| LOG-ATTR-REDUCTION | Heaviest resource attributes by subsystem |
-| LOG-DUP-KEYS | The same key values repeated across logs |
-| LOG-TEMPLATES | Templates and Schema Explorer review: parsing, cardinality, alert coverage |
-| LOG-MULTILINE | Stack traces split into many lines (fixed on the filelog receiver) |
-| LOG-LOW-VALUE | Bodies such as OK, 200, healthcheck, pong |
-| LOG-DEDUP | The same log ID or body seen many times in a short window |
-| LOG-OVERSIZED | Logs over 32 KB |
-| LOG-TCO-FIT | Low-value logs sitting in the High TCO tier; legacy TCO Override users |
-| LOG-SEVERITY | Routine events logged as errors |
-| LOG-SAVINGS-CALC, LOG-BASELINE | Daily units and savings per finding |
+## CLI
 
-### Traces
+```bash
+cxlens analyze --pillars universal,logs,traces,metrics --team <cx profile> --region ap1 \
+  --config ./values.yaml --deployment helm --otel-version 0.98.0 --chart-version 0.0.300 \
+  --customer "Acme" --env prod --prepared-by "Jane TAM" --critical checkout,payment \
+  --internal-terms "jane,acme-internal" --out ./report
+cxlens doctor --team <profile>      # cx / claude / Metrics API / latest versions
+cxlens versions --refresh           # latest Helm chart + OTel Collector (24 h cache)
+cxlens recheck --team <profile> --before ./report   # 24 h post-change label re-run, before/after series
+cxlens teams add <name> --region ap1                 # stores CX_API_KEY in the macOS Keychain
+```
 
-| ID | Check |
-|---|---|
-| SPAN-SAMPLING | No or weak tail sampling (keep errors and slow traces, sample healthy traffic) |
-| SPAN-HEALTH | Health checks, pings and probes |
-| SPAN-INTERNAL | High share of INTERNAL spans in non-critical services |
-| SPAN-LOW-PRIORITY | Per-service sampling for non-critical services |
-| SPAN-LABELS | Heavy resource or span attributes |
-| SPAN-HEAVY-VALUES | IDs and query strings in span names or URLs |
-| SPAN-LIBRARIES | High-volume instrumentation libraries |
-| SPAN-SPANMETRICS-TCO | Alerts on raw traces; traces in the High tier |
+Useful flags: `--window 24h|7d` (volume checks, 1h to 7d), `--dup-window 15m` (duplicate checks, 1 to 60 min), `--row-limit 200`, `--span-metric db_calls_total`, `--verify all|LOG-1,SPAN-2`, `--state verify.json`, `--allow-draft`, `--near-renewal`, `--no-verify-team`, `--record fixture.json`.
 
-Sampling percentages are editable. The playbook values are the defaults.
+### Investigate with Claude (data-driven findings)
 
-### Metrics
+The playbook checks find known patterns. **Investigate** looks at what the customer’s data actually is:
 
-| ID | Check |
-|---|---|
-| METRIC-HIGH-CHURN | High-churn ID attributes such as `k8s.*.uid`, `container.id`, `process.pid` |
-| METRIC-SPAN-SANITIZATION | Span-metric cardinality from URLs and DB statements |
-| METRIC-SPAN-ATTRS | High-cardinality span attributes becoming metric labels |
-| METRIC-UNUSED, METRIC-FILTER-UNUSED | Top metrics by units with zero queries in 30 days |
-| METRIC-LABEL-ANALYZER | Unique series per service (healthy: about 10–50 span names per service) |
-| METRIC-CARDINALITY-LIMIT | `aggregation_cardinality_limit` and `otel_metric_overflow` |
-| METRIC-NO-PROB-SAMPLER | Never suggests `probabilistic_sampler` for metrics |
-| METRIC-HEAVY-RESOURCE | Heavy resource attributes on ECS, EC2 and standalone collectors |
-| METRIC-SCRAPE-INTERVAL | Scrape interval shorter than 60 s |
-| METRIC-REDACTION | Sensitive or high-cardinality values |
+1. **Discover (cx):** rank the log patterns (by body bytes), span operations (by count) and metrics (by series, see below) that drive the most volume in the window.
+2. **Sample (cx):** pull live records for each, and mask them on this Mac (emails, IPs, tokens, keys, card numbers, account IDs).
+3. **Analyse (Claude):** `claude -p` with the prompt on stdin, `--tools ""` (Claude can only read and reply), `--no-session-persistence`, and `--json-schema` so the answer is structured. For each contributor Claude explains what it is and its value, and proposes one change: fix at source, replace, truncate, drop, sample, move tier, or keep. It writes the OTTL and a DataPrime filter for the affected records.
+4. **Validate (Lens, never Claude):** check the OTTL (allowed functions, quoting, protected labels; `otelcol-contrib validate` when installed). Run the DataPrime filter with cx to measure the matched records per day and the share that are errors (a drop that would touch errors is rejected). For drops, fetch records the filter really selects. For replace and truncate, apply the change to the live samples to show a real before/after.
+5. **Quantify (Lens):** savings from measured volume × official unit rates (for truncation, the exact bytes over the limit; for replace, the bytes removed on the samples × matched records). Unvalidated suggestions are shown as *Needs scoping* with no saving claimed. Playbook log rules that cover the same data are kept visible but left out of the combined total.
 
-### Adoption gaps
+**Metrics** (when the Metrics pillar is selected):
 
-Recorded in a separate report section, not counted as savings: services that are not instrumented, signals not yet sent (traces, profiling, RUM), features not yet used (SLOs, Infrastructure Explorer, AI features), .NET services on the deprecated Coralogix .NET SDK, and where the freed quota could go next.
+1. **Rank** metrics by series (an instant `count by (__name__)`; `*_over_time` functions drop the metric name, so ranking cannot use them).
+2. **Measure each top metric over the window** with cx: distinct series over the window (this is where restart churn shows), and distinct values per label, to find the label that drives cardinality. Masked live series are kept as samples.
+3. **Claude** proposes one change per metric: drop a label, normalise IDs inside a label, fewer histogram buckets, drop the metric, or fix at source.
+4. **Lens validates with PromQL**: exact series after dropping a label (`count(count without (label) (…))`), the regex applied to every real label value for normalisation, real bucket counts for histograms. It refuses protected labels (including underscore forms such as `cloud_region`) and anything your alerts or recording rules reference.
+5. **Saving:** series removed ÷ all metric series × metrics GB per day × the official rate (30 GB = 1 unit). This assumes series send similar numbers of data points, and the report says so.
 
-### Investigate (optional, uses Claude)
+**TAM skills** from the playbook’s AI Skills tab run as part of metrics Investigate, using copies bundled in `skills/` (override with `CXLENS_SKILLS_DIR`):
+- `span-name-cardinality-analyzer`: Lens collects `span_name` values per top service through cx. Claude applies the skill and returns patterns plus OTTL. Lens applies the patterns to every real span name and reports unique names before → after.
+- `span-metrics-bucket-optimizer`: Lens pulls the live bucket distribution for the top services, computes p50/p95/p99 itself (as `histogram_quantile` does), and passes the vendor you choose. Claude proposes buckets. Lens reports the histogram series change and writes `histogram.explicit.buckets` for the spanmetrics connector.
 
-Investigate finds what actually drives the volume in the customer's data, then:
+The skills normally ask for an API key and call the Metrics API with curl. Inside Lens they don’t: Lens gathers the data read-only through cx, and Claude runs with tools off. Switch each skill on or off on **Choose pillars**; CLI: `--vendor <name>`, `--no-skills`.
 
-1. Ranks the biggest log patterns, span operations and metrics with cx.
-2. Pulls live samples and masks them on your Mac (emails, IPs, tokens, keys, card numbers, account IDs).
-3. Asks Claude (with all tools switched off) to explain each one and suggest one change.
-4. Validates the suggestion itself, never trusting Claude: checks the OTTL, runs the filter with cx, and refuses anything that would drop errors or touch protected labels.
-5. Calculates savings from measured volume and the official unit rates. Unvalidated suggestions are shown as Needs scoping with no saving claimed.
+Each Investigate finding in the app and in every report shows the live samples, the before/after, the proposed transform, the validation query and result, the savings maths, and a DataPrime query to open those records in Coralogix. On by default on the **Choose pillars** step (5, 8 or 12 contributors); CLI: `--investigate [n]`. **Check prerequisites** on Connect confirms cx, team access, metrics, and that the claude CLI is signed in.
 
-The playbook's two TAM skills, `span-name-cardinality-analyzer` and `span-metrics-bucket-optimizer`, run as part of metrics Investigate.
+### Analysis window
 
----
+Set on the **Config and versions** step (or with `--window` / `--dup-window` / `--row-limit` in the CLI):
 
-## 6. What Lens produces
+| Setting | Options | Default |
+|---|---|---|
+| Volume checks (attribute sizes, noisy logs, spans, metric series) | Last 1 hour, 6 hours, 24 hours, 3 days, 7 days, **or a custom date and time range** (1 hour to 7 days, ending in the past) | Last 24 hours |
+| Duplicate checks (`logid` seen more than once) | 5, 15, 30, 60 min | 15 min |
+| Rows per query | 100, 200, 500, 1000 | 200 |
+
+**Custom date and time:** pick a start and end in your local time (quick picks: Yesterday, Last 7 full days, Same 24 h last week). The app shows the UTC equivalent and checks the range. Logs and spans are queried with the exact start and end, duplicate checks and field samples use the final minutes of the range, and metrics are evaluated at the range’s end. CLI: `--from 2026-10-24T00:00:00Z --to 2026-10-25T00:00:00Z`.
+
+Results are always converted to a per-day figure. Usage (the daily baseline, GB per day and units-per-GB rate) uses the **last 7 complete days**: today is left out because it is still in progress. Samples used only to see which fields exist stay at 1 hour. Every report states the window it is based on, and drafts remember the setting.
+
+### Metric labels and cardinality
+
+When the Metrics pillar is selected, Lens builds a **label inventory**: every label ranked by usage, flagged as *high cardinality* (e.g. `span_name`, `http_url`, `url_full`, `db_statement`), *churn* (pids, pod and container IDs) or *same value everywhere* (one value on hundreds of metrics). Protected labels and labels Coralogix features rely on are shown but never suggested for removal.
+
+- **Exact usage (optional):** add an API key with the **DataAnalytics** preset under *Exact metric usage* on Connect. Give it a name; it is stored in the macOS Keychain and offered from a dropdown next time (per team, so one key can serve several teams). Lens keeps only key names and team choices in `~/.cxlens/usage-keys.json`. **Test key** confirms it works; `CXLENS_USAGE_KEY` overrides for the CLI. Lens then reads the Coralogix **Metric Usage API** (gRPC, read-only; message definitions bundled in `packages/connectors/proto`), the same data as Settings › Metrics Data › Labels, and uses exact units per label and per metric. Without it, Lens measures labels with PromQL through cx and estimates savings from series.
+- **Value shapes:** for each flagged label Lens fetches every value and groups them by shape (GraphQL text → operation name, URLs → route with IDs replaced, numbers and quoted strings stripped), with masked real examples.
+- **Built-in tested fixes:** for GraphQL text in span names (→ operation name) and IDs, UUIDs and query strings in URL labels (`http_url`, `url_full`, …), Lens writes the OTTL itself (span context, before the spanmetrics connector) and tests it on every value, so a transform exists even without Claude. When Claude’s patterns leave as few or fewer distinct values, Lens uses Claude’s instead. The labels table shows each tested fix (“16,557 → N values”), marked “pending verification” until the finding is verified.
+- **Fix per label:** Claude proposes a normalisation, a drop or a source fix; Lens applies normalisations to every real value and reports the exact distinct values after, measures drops with `count without`, and refuses protected or alert-referenced labels.
+- **Span metrics are found by the `span_name` label** (the costliest one is used), and metrics are ranked by real units or by series over the window.
+- Reports add a **Top cardinality and usage labels** table; the slide's “Next prize” names the biggest label. Checks that found no data are listed on Verify and in the internal report.
+
+### Several deployment types
+
+On **Customer context**, tick every way the customer runs the collector: Kubernetes (EKS or any cluster, Helm), ECS, EC2, Standalone. **Config and versions** then shows one optional config slot per type, each with its own detection, versions and a warning if the file looks like the wrong type.
+
+- Data checks run **once** for the whole team, so savings are never counted twice. Config checks run **per type** (e.g. “ECS: Upgrade to the latest …”).
+- A finding has one Verify decision and a config change per type (a Helm preset for Kubernetes, a processor for ECS/EC2).
+- Exports have a folder per type: `kubernetes/`, `ecs/`, `ec2/`, `standalone/`, each with its optimised config, diff, and (when behind) upgraded config and breaking changes.
+- Reports show version status per type, “Applies to” on each finding, and the share of log and span volume per type (from `k8s.cluster.name` and `cloud.platform`).
+- CLI: `--deployment helm,ecs,ec2` and `--config helm=values.yaml --config ecs=ecs.yaml`.
+
+### Report layout
+
+Every HTML report (customer and internal) opens with a **one-slide leadership summary**, then a **Technical details** part.
+
+- **The slide (16:9, “Present full screen”, Esc to exit):** units per day the customer can stop spending; today → after; per month (× 30) and per year (× 365); the quick-win share; the cut per data type; the largest changes; a “Next prize” callout when one data type is at least 40% of usage with under 5% saved; baseline dates and the ±20% caveat.
+- **The same numbers as the rest of the report:** they come from the same overlap-safe total, and the “largest changes” list only includes changes the total counts, so it never adds up to more than the headline.
+- **Draft reports** say so on the slide.
+- **Audience:** set who the slide is for on the Customer step, or with `--audience` (default “leadership”).
+- **Technical details** follow: stat tiles, roadmap, ranked opportunities, usage trend, upgrade, findings, expansion and next steps. Markdown reports carry the same summary as text at the top.
+
+### Drafts, starting over and file names
+
+- **Save a draft at any stage** with *Save draft* in the sidebar (or ⌘S). The draft holds the customer details, pillars, config, versions, current step and the assessment with its Verify decisions, and keeps saving as you move on. Resume or delete drafts from **Connect**. Drafts live in `~/.cxlens/drafts` on this Mac and never contain API keys.
+- **Start a new review** (sidebar, and at the end of Remediate) returns to Connect with everything cleared, offering to save a draft first.
+- **Download all** at the end gives one zip with every report and config. *Download all as draft* includes unverified findings and marks every report DRAFT. Via the CLI: `--zip` (with `--allow-draft` for the draft version).
+- **Reports are named after the customer**: `Acme.html`, `Acme.md`, `Acme.json`, `Acme (internal).html`, and `Acme (draft).html` / `Acme (internal, draft).html` for drafts. Characters that are not allowed in file names are removed.
+
+### Outputs
 
 | File | What it is |
 |---|---|
-| `<Customer>.html`, `.md`, `.json` | Customer-ready report. Internal names, Notion, Slack, Drive and Gong links, account IDs, keys and team hostnames are removed, and checked again before export. |
-| `<Customer> (internal).html`, `.md`, `.json` | The same report plus sources, queries, raw evidence and skipped checks. |
-| `optimized-config.yaml` and `.diff` | The customer's config on their current version with Verified findings applied. Their structure, order and comments are kept, and every added block has a comment with the finding ID and source link. |
-| `upgraded-config.yaml`, `.diff` and `breaking-changes.md` | Only when the customer is behind: the config moved to the latest version, with breaking changes auto-fixed where they are mechanical and the rest listed as Manual action needed. |
-| `tco-policy-drafts.json` | Draft TCO log and trace policies. Never created automatically. |
-| `calls_total_ALL_SERVICES_unique_labels.csv` | Metrics Label Analyzer export. |
-| `assessment.json` / `report.json` | Machine-readable output, versioned with a JSON Schema. |
+| `<Customer>.{html,md,json}` | Customer-ready report (schema: `packages/core/schema/report.schema.json`). Internal names, Notion/Slack/Drive/Gong links, account IDs, keys and team hostnames are stripped, then checked again before export. |
+| `<Customer> (internal).{html,md,json}` | Same report plus sources, queries, raw evidence, skipped checks. |
+| `optimized-config.yaml` + `.diff` | Customer's config on their current version with Verified findings applied; structure, order and comments kept; every added block tagged with finding ID and source link. |
+| `upgraded-config.yaml` + `.diff`, `breaking-changes.md` | Only when out of date: moved to the latest version, breaking changes auto-fixed where mechanical, everything else listed as *Manual action needed*. |
+| `tco-policy-drafts.json` | TCO log/trace policy drafts (never created automatically). |
+| `calls_total_ALL_SERVICES_unique_labels.csv` | Built-in Metrics Label Analyzer export. |
 
-With several deployment types, outputs go into one folder per type: `kubernetes/`, `ecs/`, `ec2/`, `standalone/`.
+PDF: open the HTML report and print to PDF (the desktop app does the same through the system print dialog).
 
-**Report layout.** Every HTML report opens with a one-slide leadership summary (press "Present full screen", Esc to exit), followed by Technical details: summary tiles, phased roadmap, ranked opportunities, overlaps, combined potential (with the ±20% caveat), 30-day usage trend, version status, detailed findings, adoption gaps and next steps.
+## Architecture
 
-**Overlaps.** When two findings affect the same data (for example tail sampling and health-check removal), Lens never adds their savings together. It prints a plain-English note and uses an overlap-safe total everywhere.
-
-**Units.** Savings are shown in Coralogix units per day, with GB as secondary detail. Conversion uses only the official per-pillar and per-tier rules from the Coralogix documentation.
-
-**Versions.** Lens resolves the latest otel-integration Helm chart from the official Coralogix Helm repo and the latest OTel Collector from the opentelemetry-collector-releases GitHub releases, caches them for 24 hours, and shows them on the main screen. Nothing is hard-coded. Offline, it uses the cache and shows when it was last checked.
-
----
-
-## 7. Safety rules
-
-**Read-only by default.** Every cx call uses `--read-only`. Lens never changes Coralogix settings, TCO policies or a running collector. TCO policies, recording rules and Events2Metrics are produced as drafts only.
-
-**Protected labels are never removed.** Infrastructure Explorer, the APM Infrastructure tab and AWS resource enrichment depend on these resource attributes:
-
-- `cloud.provider`, `cloud.platform`, `cloud.account.id`, `cloud.account.name`, `cloud.region`, `cloud.availability_zone`
-- `host.id`, `host.name`, `host.image.id`, `host.type`
-- `azure.*` and `gcp.*` infrastructure identifiers
-
-The list lives in one file, `protected-labels.yaml`. The config writer refuses to delete any of them, removes them from any existing denylist it touches (with a comment explaining why), and a final guard re-scans every output before saving. Because a custom `reduceResourceAttributes` denylist replaces the chart default, Lens always writes the full protected-safe list.
-
-**Secrets stay safe.** API keys are stored in the macOS Keychain, never in plain text, logs or drafts.
-
-**Data sent to Claude is masked first.** Emails, IPs, tokens, keys, card-like numbers and account IDs are masked on your Mac, and the app shows exactly what will be sent.
-
-**Every query has limits.** A time window and a row limit on every query, plus throttling to respect API rate limits.
-
-**Local only.** The engine listens on `127.0.0.1` and requires a random per-session token for every API call.
-
----
-
-## 8. Where Lens keeps its files
-
-| What | Where |
-|---|---|
-| The app | `/Applications/Coralogix Lens.app` |
-| Assessment runs | `~/.cxlens/runs` |
-| Drafts | `~/.cxlens/drafts` |
-| Version cache (24 h) | `~/.cxlens/cache` |
-| Engine state (port, process ID) | `~/.cxlens/app` |
-| Engine log | `~/Library/Logs/Coralogix Lens/engine.log` |
-| API keys | macOS Keychain, service `com.coralogix.lens` |
-
-`~/.cxlens` is a hidden folder. In Finder, press ⌘⇧G and type `~/.cxlens` to open it.
-
----
-
-## 9. Troubleshooting
-
-**"Coralogix Lens can't be opened because Apple cannot check it for malicious software."**
-This is the first-run block. Follow [Step 3](#step-3-allow-the-app-the-first-time).
-
-**"Coralogix Lens is damaged and can't be opened."**
-Run this in Terminal, then open the app again:
-```bash
-xattr -dr com.apple.quarantine "/Applications/Coralogix Lens.app"
+```mermaid
+flowchart TB
+  UI["UI · React + TypeScript + Tailwind<br/>Tauri shell · embeddable components · &lt;coralogix-lens&gt;"]
+  API["Local API · 127.0.0.1 only · OpenAPI 3 · WebSocket progress · per-session token"]
+  CORE["@cx-lens/core (pure library)<br/>rule catalogue · analyzer plugins · protected-label guard<br/>config parser/writer/upgrader · units & overlap calculator · report builder"]
+  RULES[("@cx-lens/rules<br/>YAML data from the playbook")]
+  CON["@cx-lens/connectors<br/>CxCliAdapter · MetricsApiAdapter · ClaudeCliAdapter · MockAdapter · Keychain"]
+  UI -->|REST + WS| API --> CORE
+  CORE --> RULES
+  CORE -->|Connector interface| CON
 ```
 
-**Nothing seems to happen when I open the app.**
-Wait a few seconds; the engine takes a moment on first start. If no window appears, look at the log:
-```bash
-tail -50 ~/Library/Logs/Coralogix\ Lens/engine.log
 ```
-You can also open the window yourself. The port is saved here:
-```bash
-open "http://127.0.0.1:$(cat ~/.cxlens/app/engine.port)/"
+packages/core        engine (no UI or OS code)      packages/rules   rule catalogue (YAML)
+packages/connectors  cx · Metrics API · claude · mock packages/api     local server + OpenAPI
+packages/ui          app + lib + web component      apps/cli         `cxlens`
+apps/desktop         Tauri macOS shell              fixtures         demo data + sample configs
+brand                logo sources                   scripts          icon build
 ```
 
-**The window opened in Safari but I want an app-style window.**
-Install Google Chrome, Microsoft Edge or Brave. Lens uses them in app mode automatically.
+**Safety by construction**
+- *Protected labels* (`cloud.*` listed, `host.id/name/image.id/type`, `azure.*`, `gcp.*`) live in one file, `packages/rules/protected-labels.yaml`. The writer refuses any op that deletes one. It strips them from existing denylists, `delete_key` statements and `attributes`/`resource` delete actions, and a final guard re-scans every output. It never uses the chart's default denylist: a custom denylist **replaces** the default, so it always writes the full protected-safe list.
+- *Read-only*: every cx call carries `--read-only`; the Metrics API adapter only uses GET; TCO, recording rules and E2M are drafts.
+- *Secrets*: Lens never handles the customer's key. Logs, traces, metrics and usage all go through cx, which authenticates itself. Only the optional direct Metrics API fallback takes an explicit key (`CX_API_KEY` or Lens's Keychain entry `com.coralogix.lens`), and it is never written or logged.
+- *AI*: samples are masked (emails, IPs, tokens, keys, card numbers, account IDs) before reaching `claude -p`, and the UI shows exactly what will be sent.
+- *Limits*: every query has a time window and a row limit. A global throttle plus `Retry after` handling protects the API.
 
-**"cx CLI installed: Not found" on Connect.**
-Check that `which cx` works in Terminal. If it does, stop Lens and open it again so it picks up your latest `PATH`. If not, install it with `brew install coralogix/tap/cx`.
+## Extending
 
-**"claude CLI signed in" fails.**
-Run `claude` once in Terminal and sign in. Investigate and the skills need this; everything else works without it.
-
-**The engine is stuck or the port is in use.**
-Stop it, then open the app again:
-```bash
-kill "$(cat ~/.cxlens/app/engine.pid)"; rm -f ~/.cxlens/app/engine.*
-```
-
-**Version check says "offline".**
-Lens could not reach the Coralogix Helm repo or GitHub. It uses the cached versions and shows the date they were last checked. Click refresh when you are back online, or run `cxlens versions --refresh`.
-
----
-
-## 10. Uninstalling
-
-1. Stop Lens (open it and choose **Stop Coralogix Lens**).
-2. Drag `/Applications/Coralogix Lens.app` to the Trash.
-3. Optional: remove your data, logs and the CLI link.
-   ```bash
-   rm -rf ~/.cxlens "$HOME/Library/Logs/Coralogix Lens"
-   sudo rm -f /usr/local/bin/cxlens
-   ```
-4. Optional: remove saved keys in **Keychain Access** by searching for `com.coralogix.lens`.
-
----
-
-## 11. Architecture
-
-Lens is built in layers so other products can embed the engine as a feature.
-
-```
-┌─────────────────────────────────────────────────────────┐
-│  UI layer (React + TypeScript + Tailwind)                │
-│  Also exported as embeddable components / web component  │
-└───────────────▲─────────────────────────────────────────┘
-                │ REST + WebSocket (OpenAPI 3 spec)
-┌───────────────┴─────────────────────────────────────────┐
-│  Local API server (127.0.0.1 only, per-session token)    │
-└───────────────▲─────────────────────────────────────────┘
-                │
-┌───────────────┴─────────────────────────────────────────┐
-│  Core engine (@cx-lens/core, pure library, no UI code)   │
-│  - Rule catalogue (YAML data from the playbook)          │
-│  - Analyzer plugins: universal / logs / traces / metrics │
-│  - Protected-label guard                                 │
-│  - Config parser, writer and upgrader                    │
-│  - Units and savings calculator (with overlap handling)  │
-│  - Report builder (internal + customer-ready)            │
-└───────────────▲─────────────────────────────────────────┘
-                │
-┌───────────────┴─────────────────────────────────────────┐
-│  Connector adapters (one interface, many backends)       │
-│  - CxCliAdapter      (cx CLI on the Mac)                 │
-│  - ClaudeCliAdapter  (claude CLI, headless)              │
-│  - MetricsApiAdapter (Coralogix Metrics API, read-only)  │
-│  - MockAdapter       (fixtures for tests and demos)      │
-└─────────────────────────────────────────────────────────┘
-```
-
-### Project structure
-
-```
-cx-lens/
-├── packages/
-│   ├── core/          Engine: analyzers, guard, config writer/upgrader, units, reports, JSON Schema
-│   ├── rules/         Rule catalogue: universal, logs, traces, metrics, protected-labels, units, domains, sources (YAML)
-│   ├── connectors/    cx, claude, Metrics API, Metric Usage API (gRPC), mock, Keychain
-│   ├── api/           Local server and OpenAPI 3 spec
-│   └── ui/            React app, component library and <coralogix-lens> web component
-├── apps/
-│   ├── cli/           cxlens command
-│   └── desktop/       Tauri macOS shell (Rust)
-├── skills/            Bundled TAM skills from the playbook's AI Skills tab
-├── fixtures/          Demo data and sample Helm, ECS and EC2 configs
-├── docs/              Sample report and screenshots
-├── brand/             Logo and icon sources
-├── scripts/           Icon build and colour-contrast check
-├── README.md
-└── SOURCES.md         Every source used, mapped to rules, plus every playbook-vs-docs difference
-```
-
-### Inside the DMG
-
-```
-Coralogix Lens.app/Contents/
-├── Info.plist                 App metadata (macOS 12+, no Dock icon)
-├── MacOS/CoralogixLens        Launcher: picks the runtime, loads your PATH, starts the engine, opens the window
-└── Resources/
-    ├── runtime/node-arm64     Official Node.js 22.23.4 for Apple Silicon
-    ├── runtime/node-x64       Official Node.js 22.23.4 for Intel
-    ├── server/server.mjs      Engine and local API, bundled into one file
-    ├── server/cli.mjs         cxlens CLI, bundled into one file
-    ├── server/ui/             Built web UI
-    ├── server/rules/          Rule catalogue (YAML)
-    ├── server/skills/         TAM skills
-    ├── server/proto/          Metric Usage API definitions
-    ├── fixtures/demo.json     Demo data
-    ├── bin/cxlens             CLI wrapper
-    └── icon.icns              App icon
-```
-
-### Tech stack
-
-| Part | Technology |
-|---|---|
-| Engine, API, CLI | TypeScript on Node.js |
-| YAML handling | `yaml` library (Document API keeps comments and anchors) |
-| UI | React 18, TypeScript, Tailwind, Vite |
-| Desktop shell | Tauri 2 (native build) or the bundled launcher (this DMG) |
-| Tests | Vitest (unit, golden, upgrade, overlap, protected-label), Playwright (UI flows) |
-
----
-
-## 12. Building from source
-
-You need Node.js 20 or later.
-
-```bash
-npm install
-npm run build        # builds core, connectors, api, cli and ui
-npm test             # 97 tests across 14 files (Vitest)
-npm run e2e          # full UI flow in Chromium, light and dark (Playwright)
-```
-
-Run without packaging:
-
-```bash
-npm run serve        # app at http://127.0.0.1:4319
-npm run demo         # CLI demo report in ./demo-report
-```
-
-### How this DMG was built
-
-This DMG was built on Linux, so it does not use the Tauri shell (Tauri needs Apple's Xcode tools, which only run on a Mac). Instead:
-
-1. The project is built with `npm run build`, and all tests pass.
-2. The API server and the CLI are each bundled into a single file with esbuild.
-3. The official Node.js 22.23.4 macOS binaries (arm64 and x64) are downloaded from nodejs.org and checked against the published SHA-256 checksums.
-4. A standard `.app` bundle is assembled with `Info.plist`, the icon, a launcher script and the resources above.
-5. An HFS+ volume is created and compressed into a DMG with `libdmg-hfsplus`, the same tool Mozilla uses to build Firefox's Mac installers on Linux.
-
-Because it is not signed with an Apple Developer ID, macOS asks you to allow it once ([Step 3](#step-3-allow-the-app-the-first-time)).
-
-### Building the native Tauri app (on a Mac)
-
-The native build opens Lens in its own macOS window (WebKit) instead of a browser window.
-
-```bash
-# One-time setup
-xcode-select --install
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-cargo install tauri-cli --version '^2'
-
-# Build
-npm install
-npm run build && npm run icons && npm run desktop:build
-# Output: apps/desktop/src-tauri/target/release/bundle/dmg/
-```
-
-The Tauri shell currently starts the engine with the system Node.js (20 or later). To ship without that dependency, add a Node binary as a Tauri `externalBin` sidecar and point `main.rs` at it. To distribute without the first-run warning, sign and notarise with an Apple Developer ID.
-
----
-
-## 13. Extending Lens
-
-**Add an analyzer.** Add the rule (queries, thresholds, verify questions, sources) to `packages/rules/<pillar>.yaml`, then add a plugin:
+**Add an analyzer.** Add the rule (queries, thresholds, verify questions, sources) to `packages/rules/<pillar>.yaml`, then a plugin:
 
 ```ts
 import { definePlugin, loadCatalogue } from '@cx-lens/core';
-
 export const myCheck = definePlugin(loadCatalogue(), 'LOG-MY-CHECK', 'logs', {
-  async detect(ctx) {
-    const e = await ctx.query('LOG-MY-CHECK', 'my-query');
-    return e.rows?.length ? { applicable: true, evidence: [e], facts: { n: e.rows.length } } : null;
-  },
-  recommend: () => ({ nextStep: 'What the customer should do next.' }),
-  estimateSavings: () => ({ kind: 'needs-scoping', unitsPerDay: null, gbPerDay: null, basis: 'Why' }),
-  generateConfigPatch: () => ({ summary: '…', snippet: '…', ops: [] }),
+  async detect(ctx) { const e = await ctx.query('LOG-MY-CHECK', 'my-query'); return e.rows?.length ? { applicable: true, evidence: [e], facts: { n: e.rows.length } } : null; },
+  recommend: (d) => ({ nextStep: 'What the customer should do next.' }),
+  estimateSavings: (d) => ({ kind: 'needs-scoping', unitsPerDay: null, gbPerDay: null, basis: 'Why' }),
+  generateConfigPatch: () => ({ summary: '…', snippet: '…', ops: [/* processor | helmPreset | … */] }),
 });
 // runAssessment({ ..., extraPlugins: [myCheck] })
 ```
 
-Title, phase, effort, owner, overlaps, verify checklist and sources come from the YAML, so playbook updates are data changes, not code changes.
+Metadata (title, phase, effort, owner, overlaps, verify checklist, sources) comes from the YAML, so playbook edits are data changes.
 
-**Add a TAM skill** without code changes:
+**Add a TAM skill** (`.skill` package from the playbook's AI Skills tab) with no code changes:
 
 ```ts
-import { skillAnalyzer } from '@cx-lens/core';
-import { ClaudeCliAdapter } from '@cx-lens/connectors';
-
-const plugin = skillAnalyzer(
-  { id: 'span-name-cardinality-analyzer', path: '~/skills/span-name-cardinality-analyzer.skill', pillar: 'metrics', title: 'Span name cardinality (skill)' },
-  new ClaudeCliAdapter(),
-);
+import { skillAnalyzer } from '@cx-lens/core'; import { ClaudeCliAdapter } from '@cx-lens/connectors';
+const plugin = skillAnalyzer({ id: 'span-name-cardinality-analyzer', path: '~/skills/span-name-cardinality-analyzer.skill', pillar: 'metrics', title: 'Span name cardinality (skill)' }, new ClaudeCliAdapter());
 ```
 
-The skill runs headless through `claude -p`, and its JSON output is mapped to standard findings with status Candidate.
+The skill runs headless through `claude -p` with its SKILL.md appended. Its JSON output is mapped to standard findings (status Candidate, source marked internal).
 
 **Embed the engine** in another product:
 
 ```ts
 import { runAssessment, produceOutputs } from '@cx-lens/core';
 import { buildConnector } from '@cx-lens/connectors';
-
-const a = await runAssessment({
-  connector: await buildConnector({ name: 'acme', region: 'eu2', profile: 'acme' }),
-  customer, pillars: ['universal', 'logs'], deployment: 'helm', configText,
-});
+const a = await runAssessment({ connector: await buildConnector({ name: 'acme', region: 'eu2', profile: 'acme' }), customer, pillars: ['universal','logs'], deployment: 'helm', configText });
 const { files } = await produceOutputs(a);
 ```
 
-You can also call the local API (spec at `/api/openapi.json`), or use the UI as a component (`import { LensApp } from '@cx-lens/ui'`) or as a web component (`<coralogix-lens api="http://127.0.0.1:4319" token="…">` from `@cx-lens/ui/element`).
+You can also call the local API (OpenAPI at `/api/openapi.json`), or drop in the UI: `import { LensApp } from '@cx-lens/ui'` or `<coralogix-lens api="http://127.0.0.1:4319" token="…">` from `@cx-lens/ui/element`.
 
-**Environment variables** (used by the launcher; useful when embedding):
+## Versions
 
-| Variable | Purpose |
+Lens resolves the latest **otel-integration** chart at runtime from the Coralogix Helm repo (`index.yaml`) and the latest **OTel Collector** from the opentelemetry-collector-releases GitHub releases. Both are cached for 24 h; offline, the cache is used and its date shown. No version is hard-coded in logic. `0.0.356` (pinned in the playbook) is only an offline fallback.
+
+For an outdated Helm chart, Lens maps the chart version to its collector image via the chart CHANGELOG. It then collects breaking changes between the current and latest versions from the chart, contrib and core CHANGELOGs, keeping only those that affect components in use. It auto-fixes the mechanical ones, flags the rest as manual, and rechecks the custom denylist against the chart README.
+
+## Packaging the macOS app
+
+```bash
+cargo install tauri-cli --version '^2'   # or: npm i -D @tauri-apps/cli -w @cx-lens/desktop
+npm run build && npm run icons && npm run desktop:build   # → .app and .dmg in apps/desktop/src-tauri/target
+```
+
+The shell starts the engine with the system Node (≥ 20) on a free 127.0.0.1 port and a random session token, then opens a native window on it. To ship without a Node dependency, add a Node binary as a Tauri `externalBin` sidecar and point `main.rs` at it. Signing and notarisation use your Apple Developer ID as usual.
+
+## Status
+
+| Milestone | State |
 |---|---|
-| `CXLENS_PORT` | Port for the local API (default 4319) |
-| `CXLENS_TOKEN` | Session token (random if not set) |
-| `CXLENS_HOME` | Data folder (default `~/.cxlens`) |
-| `CXLENS_UI_DIR`, `CXLENS_RULES_DIR`, `CXLENS_SKILLS_DIR`, `CXLENS_PROTO_DIR` | Locations of the UI, rules, skills and proto files |
-| `CXLENS_CACHE_DIR` | Version cache folder |
-| `CXLENS_USAGE_KEY` | DataAnalytics key for the Metric Usage API |
+| 1 Core, rule catalogue, MockAdapter, protected-label guard | Done; tested |
+| 2 Universal + Logs analyzers | Done; run live |
+| 3 Config parser / writer / diff | Done; golden tests for Helm, ECS, EC2 |
+| 4 Report builder | Done; template sections, internal + customer, JSON Schema |
+| 5 cx, claude, Metrics API adapters | cx runs live for logs, spans, usage and metrics (PromQL); Metrics API kept as an explicit-key fallback; claude and Keychain paths written, not exercised on this build machine (Linux) |
+| 6 Traces + Metrics analyzers | Done; run live |
+| 7 Version check + upgrader | Done; live version resolution and changelog parsing; upgrade tests |
+| 8 UI | Done; Playwright flow passes in light and dark |
+| 9 Packaging | Tauri project and icons included; the macOS bundle must be built on a Mac (not compiled here) |
 
----
-
-## 14. Sources
-
-Lens uses only these sources for every rule, query, threshold, processor and config key:
-
-- *Telemetry Health & Value Review – TAM Playbook* (all tabs: Universal, Logs, Traces, Metrics, AI Skills), the Executive Summary – Optimization report template, and the Tail Sampling reference playbook.
-- Official Coralogix documentation (coralogix.com/docs) and official Coralogix GitHub repos, including the otel-integration chart README and CHANGELOG.
-- Official OpenTelemetry documentation (opentelemetry.io) and the opentelemetry-collector, opentelemetry-collector-contrib and opentelemetry-collector-releases repos.
-
-When the playbook and the official docs disagree, the official docs win, and the difference is noted in a code comment and in `SOURCES.md`. Anything not covered is reported as "Not covered by official guidance" rather than guessed. Every finding in the internal report carries its source (doc title and URL).
+See **SOURCES.md** for every source used and every playbook-vs-docs difference.

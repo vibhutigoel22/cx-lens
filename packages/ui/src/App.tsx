@@ -166,11 +166,30 @@ function ToolRow({ icon: Icon, name, role, h, needTeam, optional }: any) {
 }
 
 function UsageKey({ team, region }: { team: string; region: string }) {
-  const [open, setOpen] = useState(false); const [key, setKey] = useState(''); const [msg, setMsg] = useState<{ t: string; ok: boolean } | null>(null);
+  const [data, setData] = useState<any>(null); const [adding, setAdding] = useState(false); const [label, setLabel] = useState(''); const [key, setKey] = useState('');
+  const [msg, setMsg] = useState<{ t: string; ok: boolean } | null>(null); const [busy, setBusy] = useState(false);
+  const load = () => api(`/api/usage-keys?team=${encodeURIComponent(team)}`).then((d) => { setData(d); if (!d.keys.length) setAdding(true); }).catch((e) => setMsg({ t: e.message, ok: false }));
+  useEffect(() => { setMsg(null); setAdding(false); load(); }, [team]);
+  const test = () => { setBusy(true); api(`/api/usage-keys/test?team=${encodeURIComponent(team)}&region=${region}`).then((r) => setMsg({ t: r.detail, ok: r.ok })).catch((e) => setMsg({ t: e.message, ok: false })).finally(() => setBusy(false)); };
+  const select = (id: string | null) => api('/api/usage-keys/select', { method: 'PUT', body: JSON.stringify({ team, id }) }).then((d) => { setData((x: any) => ({ ...x, ...d })); setMsg(null); });
+  const selected = data?.keys.find((k: any) => k.id === data.selected);
   return <div className="rounded-xl border border-line bg-surface p-4 shadow-sm">
-    <button onClick={() => setOpen(!open)} aria-expanded={open} className="w-full flex items-center justify-between text-left"><span><span className="text-[14.5px] font-semibold">Exact metric usage</span> <span className="text-[13px] text-mute">(optional)</span><span className="block text-[13px] text-mute">Units per metric and per label, as in Settings › Metrics Data. Without it, metric savings are estimated from series.</span></span><span aria-hidden className="text-mute">{open ? '−' : '+'}</span></button>
-    {open && <div className="mt-3 space-y-2"><Field label={`API key for ${team} with the DataAnalytics preset`} hint="Stored in the macOS Keychain and used only for the read-only Metric Usage API. cx keeps its own sign-in."><input type="password" autoComplete="off" className={inputCls} value={key} onChange={(e) => setKey(e.target.value)} /></Field>
-      <div className="flex items-center gap-3"><Button kind="primary" disabled={!key} onClick={() => api('/api/teams', { method: 'POST', body: JSON.stringify({ name: team, region, apiKey: key, kind: 'metric-usage' }) }).then(() => { setKey(''); setMsg({ t: 'Saved. Use Check prerequisites to confirm it works.', ok: true }); }).catch((e) => setMsg({ t: e.message, ok: false }))}>Save key</Button>{msg && <span className={cx('text-[13px]', msg.ok ? 'text-ok' : 'text-bad')}>{msg.t}</span>}</div></div>}
+    <div className="flex items-start justify-between gap-4"><div><p className="text-[14.5px] font-semibold">Exact metric usage <span className="font-normal text-[13px] text-mute">(optional)</span></p><p className="text-[13px] text-mute">Units per metric and per label, as in Settings › Metrics Data. Needs a key with the DataAnalytics preset; without one, metric savings are estimated from series.</p></div>
+      <span className="shrink-0 whitespace-nowrap">{selected ? (msg && !msg.ok ? <Pill tone="warn" icon={CircleAlert}>Key not working</Pill> : <Pill tone="ok" icon={CircleCheck}>Using a saved key</Pill>) : <Pill>Estimated</Pill>}</span></div>
+    {data && <div className="mt-3 flex flex-wrap items-end gap-3">
+      <Field label={`Key for ${team}`}><select aria-label="Saved metric usage key" className={cx(inputCls, 'min-w-[280px]')} value={adding ? '__add' : data.selected ?? ''} onChange={(e) => { const v = e.target.value; if (v === '__add') { setAdding(true); return; } setAdding(false); void select(v || null); }}>
+        <option value="">None (estimate from series)</option>
+        {data.keys.map((k: any) => <option key={k.id} value={k.id}>{k.label}{k.teams.length && !k.teams.includes(team) ? ` (also used by ${k.teams.join(', ')})` : ''}</option>)}
+        <option value="__add">Add a new key…</option></select></Field>
+      {selected && !adding && <Button onClick={test} disabled={busy}>{busy ? <><Loader2 size={15} className="animate-spin" />Testing…</> : 'Test key'}</Button>}
+      {selected && !adding && <Button kind="quiet" onClick={() => api(`/api/usage-keys/${selected.id}`, { method: 'DELETE' }).then(load)}>Delete this key</Button>}
+    </div>}
+    {adding && <div className="mt-3 rounded-lg bg-sunk p-3 space-y-3">
+      <div className="grid sm:grid-cols-2 gap-3"><Field label="Name"><input className={inputCls} placeholder={`${team} – DataAnalytics`} value={label} onChange={(e) => setLabel(e.target.value)} /></Field><Field label="API key"><input type="password" autoComplete="off" className={inputCls} value={key} onChange={(e) => setKey(e.target.value)} /></Field></div>
+      <p className="text-[12.5px] text-mute flex gap-1.5"><KeyRound size={13} className="mt-0.5 shrink-0" />Saved in the macOS Keychain. Lens keeps only the name, so next time you pick it from the list. Used only for the read-only Metric Usage API.</p>
+      <div className="flex gap-2"><Button kind="primary" disabled={!key || busy} onClick={() => { setBusy(true); api('/api/usage-keys', { method: 'POST', body: JSON.stringify({ label: label || `${team} – DataAnalytics`, apiKey: key, team }) }).then(() => { setKey(''); setLabel(''); setAdding(false); return load(); }).then(test).catch((e) => { setMsg({ t: e.message, ok: false }); setBusy(false); }); }}>Save and use for {team}</Button>{data?.keys.length > 0 && <Button kind="quiet" onClick={() => setAdding(false)}>Cancel</Button>}</div>
+    </div>}
+    {msg && <p role="status" className={cx('mt-2 text-[13px]', msg.ok ? 'text-ok' : 'text-bad')}>{msg.t}</p>}
   </div>;
 }
 
@@ -334,10 +353,16 @@ function WindowSettings({ win, setWin }: { win: Windows; setWin: (w: Windows) =>
     <div className="rounded-xl border border-line bg-surface divide-y divide-line shadow-sm">
       <div className="p-4 grid md:grid-cols-[220px_1fr] gap-3 items-start"><div><p className="text-[14px] font-medium">Volume checks</p><p className="text-[12.5px] text-mute">Attribute sizes, noisy logs, spans, metric series</p></div>
         <div>
-          <div role="tablist" aria-label="Window type" className="mb-3 inline-flex gap-4 text-[13.5px]">
-            {([['relative', 'Last…'], ['range', 'Custom date and time']] as const).map(([m, l]) => <button key={m} role="tab" aria-selected={mode === m} onClick={() => (m === 'range' && mode !== 'range' ? (win.start && win.end ? setWin({ ...win, mode: 'range' }) : toRange()) : setWin({ ...win, mode: m }))} className={cx('pb-1 border-b-2 font-medium', mode === m ? 'border-refract text-ink' : 'border-transparent text-mute hover:text-ink')}>{l}</button>)}
+          <div role="radiogroup" aria-label="Time range" className="grid sm:grid-cols-2 gap-2 max-w-[600px]">
+            {([['relative', 'Recent period', 'From 1 hour to 7 days, up to now'], ['range', 'Specific dates', 'A start and end you choose, up to 7 days']] as const).map(([m, l, s]) => { const on = mode === m; return (
+              <button key={m} type="button" role="radio" aria-checked={on} onClick={() => (m === 'range' && mode !== 'range' ? (win.start && win.end ? setWin({ ...win, mode: 'range' }) : toRange()) : setWin({ ...win, mode: m }))}
+                className={cx('flex items-start gap-3 rounded-lg border px-3.5 py-2.5 text-left transition-all', on ? 'border-refract bg-refract-soft' : 'border-line hover:border-mute')}>
+                <span aria-hidden className={cx('mt-1 grid h-4 w-4 shrink-0 place-items-center rounded-full border-2', on ? 'border-refract' : 'border-line')}>{on && <span className="h-2 w-2 rounded-full bg-refract" />}</span>
+                <span><span className="block text-[14px] font-medium">{l}</span><span className="block text-[12.5px] text-mute">{s}</span></span></button>); })}
           </div>
+          <div className="mt-3 max-w-[600px] rounded-lg border border-line bg-paper px-4 py-3.5">
           {mode === 'relative' ? <>
+            <p className="text-[12.5px] font-medium text-mute mb-2">Look back over the last</p>
             <Segmented label="Volume checks window" value={win.windowHours} options={VOLUME_OPTS.map(([v, l]) => [v, l])} onChange={(v) => setWin({ ...win, mode: 'relative', windowHours: v })} />
             {hint && <p className="mt-2 text-[12.5px] text-mute">{hint}</p>}
             {win.windowHours > 24 && <p className="mt-1 text-[12.5px] text-warn">Longer windows scan more data, so queries take longer and may hit Coralogix query limits on very large accounts.</p>}
@@ -351,6 +376,7 @@ function WindowSettings({ win, setWin }: { win: Windows; setWin: (w: Windows) =>
             </div>
             <p className={cx('mt-2 text-[12.5px]', err ? 'text-bad' : 'text-mute')} role={err ? 'alert' : undefined}>{err ?? `${winText(rangeHours(win))} in your time zone (${tz}): ${localToIso(win.start).slice(0, 16).replace('T', ' ')} to ${localToIso(win.end).slice(0, 16).replace('T', ' ')} UTC. Between 1 hour and 7 days; the end must be in the past.`}</p>
           </>}
+          </div>
         </div></div>
       <div className="p-4 grid md:grid-cols-[220px_1fr] gap-3 items-start"><div><p className="text-[14px] font-medium">Duplicate checks</p><p className="text-[12.5px] text-mute">Logs shipped more than once</p></div>
         <div><Segmented label="Duplicate checks window" value={win.dupWindowMinutes} options={DUP_OPTS} onChange={(v) => setWin({ ...win, dupWindowMinutes: v })} /><p className="mt-2 text-[12.5px] text-mute">{mode === 'range' ? 'Uses the final minutes of your custom range' : 'A short window keeps this fast'}; the count is scaled up to a day.</p></div></div>

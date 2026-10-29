@@ -23,7 +23,7 @@ test('full review on demo data: connect → customer → pillars → config → 
   await page.getByRole('radiogroup', { name: 'Duplicate checks window' }).getByRole('radio', { name: '30 min' }).click();
   await expect(page.getByText('Data from the last 3 days')).toBeVisible();
   // custom date and time: invalid first, then a quick pick
-  await page.getByRole('tab', { name: 'Custom date and time' }).click();
+  await page.getByRole('radio', { name: /Specific dates/ }).click();
   await page.getByLabel('Start').fill('2026-10-20T10:00'); await page.getByLabel('End').fill('2026-10-20T10:30');
   await expect(page.getByRole('alert').filter({ hasText: 'at least 1 hour' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Run the assessment' })).toBeDisabled();
