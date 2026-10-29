@@ -25,6 +25,9 @@ Group entries under: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixe
 ### Changed
 - CI bundles Node.js 22.23.3. It was chosen because it is at least two weeks old; the packaging script's default stays 22.23.4.
 
+### Fixed
+- The zip writer test no longer fails on macOS and Debian. It used to compare the "ü" in a file name with the output of the system `unzip -l`, which those builds print as `+` or a CP437 character. It now reads the stored names from the zip's central directory, which still catches a broken UTF-8 name.
+
 ## [0.1.0] - 2026-10-29
 
 First release of Coralogix Lens, a macOS app that automates the Telemetry Health & Value Review (TAM Playbook) across logs, traces and metrics.
