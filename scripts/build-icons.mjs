@@ -1,20 +1,53 @@
-// Renders brand/icon.svg to every macOS/Tauri icon size and writes a .icns (PNG-based chunks).
+// Builds every icon from the logo master, brand/logo.png (1024×1024, transparent outside the rounded square).
+//   npm run icons
+// Writes: the macOS/Tauri app icons (PNG sizes, .icns, .ico), the in-app header mark and favicon, the small mark
+// embedded in HTML reports, and the brand previews. Edit brand/logo.png, then re-run this script.
 import sharp from 'sharp';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-const svg = readFileSync('brand/icon.svg'); const out = 'apps/desktop/src-tauri/icons'; mkdirSync(out, { recursive: true });
+
+const LOGO = readFileSync('brand/logo.png');
+const out = 'apps/desktop/src-tauri/icons'; mkdirSync(out, { recursive: true });
+const png = (input, s) => sharp(input).resize(s, s, { kernel: 'lanczos3' }).png({ compressionLevel: 9 }).toBuffer();
+
+// macOS app icon: Apple's icon grid draws the rounded square at 824/1024 with a soft shadow, so it sits at the
+// same size as other apps in the Dock and Finder. (A full-bleed 1024 image looks oversized.)
+const art = await png(LOGO, 824);
+const shadow = await sharp(art).ensureAlpha().linear(0, 0).modulate({ brightness: 0 }).blur(14).png().toBuffer();
+const shadowFaded = await sharp(shadow).composite([{ input: Buffer.from([0, 0, 0, Math.round(255 * 0.42)]), raw: { width: 1, height: 1, channels: 4 }, tile: true, blend: 'dest-in' }]).png().toBuffer();
+const appIcon = await sharp({ create: { width: 1024, height: 1024, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+  .composite([{ input: shadowFaded, left: 100, top: 112 }, { input: art, left: 100, top: 100 }]).png().toBuffer();
+writeFileSync('brand/icon.png', appIcon);
+
 const sizes = { '32x32.png': 32, '64x64.png': 64, '128x128.png': 128, '128x128@2x.png': 256, 'icon.png': 1024, 'Square310x310Logo.png': 310 };
-for (const [n, s] of Object.entries(sizes)) await sharp(svg, { density: 384 }).resize(s, s).png().toFile(`${out}/${n}`);
-const chunk = async (type, s) => { const png = await sharp(svg, { density: 384 }).resize(s, s).png().toBuffer(); const h = Buffer.alloc(8); h.write(type, 0, 'ascii'); h.writeUInt32BE(png.length + 8, 4); return Buffer.concat([h, png]); };
+for (const [n, s] of Object.entries(sizes)) writeFileSync(`${out}/${n}`, await png(appIcon, s));
+
+// .icns built from PNG chunks (supported since macOS 10.7)
+const chunk = async (type, s) => { const p = await png(appIcon, s); const h = Buffer.alloc(8); h.write(type, 0, 'ascii'); h.writeUInt32BE(p.length + 8, 4); return Buffer.concat([h, p]); };
 const parts = await Promise.all([['icp4', 16], ['icp5', 32], ['icp6', 64], ['ic07', 128], ['ic08', 256], ['ic09', 512], ['ic10', 1024], ['ic11', 32], ['ic12', 64], ['ic13', 256], ['ic14', 512]].map(([t, s]) => chunk(t, s)));
 const body = Buffer.concat(parts); const head = Buffer.alloc(8); head.write('icns', 0, 'ascii'); head.writeUInt32BE(body.length + 8, 4);
 writeFileSync(`${out}/icon.icns`, Buffer.concat([head, body]));
-await sharp(svg, { density: 384 }).resize(256, 256).png().toFile('brand/icon-256.png');
-await sharp(readFileSync('brand/mark.svg'), { density: 600 }).resize(64, 64).png().toFile('brand/mark-64.png');
-// ICO (single 256 PNG entry) for completeness
-const ico256 = await sharp(svg, { density: 384 }).resize(256, 256).png().toBuffer(); const ih = Buffer.alloc(22); ih.writeUInt16LE(0, 0); ih.writeUInt16LE(1, 2); ih.writeUInt16LE(1, 4); ih.writeUInt8(0, 6); ih.writeUInt8(0, 7); ih.writeUInt16LE(1, 10); ih.writeUInt16LE(32, 12); ih.writeUInt32LE(ico256.length, 14); ih.writeUInt32LE(22, 18);
-writeFileSync(`${out}/icon.ico`, Buffer.concat([ih, ico256]));
-// preview sheet
-const sheet = await Promise.all([512, 128, 64, 32, 16].map((s) => sharp(svg, { density: 384 }).resize(s, s).png().toBuffer()));
-let x = 10; const comps = sheet.map((b, i) => { const s = [512, 128, 64, 32, 16][i]; const c = { input: b, left: x, top: 10 + (512 - s) / 2 }; x += s + 24; return c; });
-await sharp({ create: { width: x, height: 532, channels: 4, background: '#f2f4f6' } }).composite(comps).png().toFile('brand/preview.png');
+
+// .ico with 16, 32, 48 and 256 px PNG entries (Windows / browsers)
+const icoSizes = [16, 32, 48, 256]; const icoPngs = await Promise.all(icoSizes.map((s) => png(LOGO, s)));
+const dir = Buffer.alloc(6 + 16 * icoSizes.length); dir.writeUInt16LE(0, 0); dir.writeUInt16LE(1, 2); dir.writeUInt16LE(icoSizes.length, 4);
+let off = dir.length; icoSizes.forEach((s, i) => { const e = 6 + 16 * i; dir.writeUInt8(s % 256, e); dir.writeUInt8(s % 256, e + 1); dir.writeUInt16LE(1, e + 4); dir.writeUInt16LE(32, e + 6); dir.writeUInt32LE(icoPngs[i].length, e + 8); dir.writeUInt32LE(off, e + 12); off += icoPngs[i].length; });
+writeFileSync(`${out}/icon.ico`, Buffer.concat([dir, ...icoPngs]));
+
+// In-app header mark and favicons (full-bleed logo; the app draws it at 36–40 px, so 128 px stays sharp on Retina)
+mkdirSync('packages/ui/public', { recursive: true });
+writeFileSync('packages/ui/src/mark.png', await png(LOGO, 128));
+writeFileSync('packages/ui/public/favicon.png', await png(LOGO, 64));
+writeFileSync('packages/ui/public/apple-touch-icon.png', await png(LOGO, 180));
+
+// Small mark embedded in every HTML report (kept small: reports are single self-contained files)
+const reportMark = await sharp(LOGO).resize(56, 56, { kernel: 'lanczos3' }).png({ compressionLevel: 9, palette: true, quality: 90 }).toBuffer();
+writeFileSync('packages/core/src/report/brand-mark.ts', `// Generated by scripts/build-icons.mjs from brand/logo.png. Do not edit by hand.\nexport const LENS_MARK_DATA_URI = 'data:image/png;base64,${reportMark.toString('base64')}';\n`);
+
+// Brand previews used by the README
+writeFileSync('brand/icon-256.png', await png(appIcon, 256));
+writeFileSync('brand/mark-64.png', await png(LOGO, 64));
+const previewSizes = [512, 128, 64, 32, 16];
+const sheet = await Promise.all(previewSizes.map((s) => png(appIcon, s)));
+let x = 10; const comps = sheet.map((b, i) => { const s = previewSizes[i]; const c = { input: b, left: x, top: 10 + (512 - s) / 2 }; x += s + 24; return c; });
+await sharp({ create: { width: x, height: 532, channels: 4, background: '#0B0F19' } }).composite(comps).png().toFile('brand/preview.png');
 console.log('icons written');

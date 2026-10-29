@@ -1,6 +1,10 @@
 import { windowPhrase, utcText } from './builder.js';
 import { BRAND } from '../brand.js';
 import { REPORT_CSS, SLIDE_CSS, CORALOGIX_LOGO, FONT_LINKS } from './template-assets.js';
+import { LENS_MARK_DATA_URI } from './brand-mark.js';
+/** Coralogix Lens mark next to the product name (generated from brand/logo.png by scripts/build-icons.mjs). */
+const LENS_MARK = `<img class="lens-mark" src="${LENS_MARK_DATA_URI}" alt="" width="22" height="22">`;
+const LENS_MARK_CSS = '.brandline .prod{display:inline-flex;align-items:center;gap:8px}.lens-mark{width:22px;height:22px;border-radius:6px;flex:none}';
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 /** Escape, then turn `inline code` into <code>. */
 const rich = (s) => esc(s).replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2">$1</a>');
@@ -224,7 +228,7 @@ export function renderReportHtml(r) {
     const kept = base != null ? Math.max(0, base - real) : null;
     const keepPct = base ? Math.max(8, Math.min(100, (kept / base) * 100)) : 100;
     const header = `<header class="top"><div class="wrap">
- <div class="bar"><div class="brandline">${CORALOGIX_LOGO}<span class="prod">${esc(BRAND.short)}</span></div>${internal ? '<span class="internal-tag">Internal: not for customer distribution</span>' : ''}${r.draft ? '<span class="draft">Draft: includes findings not yet verified with your team</span>' : ''}</div>
+ <div class="bar"><div class="brandline">${CORALOGIX_LOGO}<span class="prod">${LENS_MARK}${esc(BRAND.short)}</span></div>${internal ? '<span class="internal-tag">Internal: not for customer distribution</span>' : ''}${r.draft ? '<span class="draft">Draft: includes findings not yet verified with your team</span>' : ''}</div>
  <h1>Telemetry health &amp; value review</h1>
  <p class="lede">A ranked view of where ${esc(r.header.customer)}’s observability spend is driven, and a phased plan to send cleaner telemetry without losing visibility into what matters.</p>
  <div class="facts"><div><span>Environment</span><b>${esc(env)}</b></div><div><span>Report date</span><b>${day(r.header.date)}</b></div><div><span>Prepared by</span><b>${esc(r.header.preparedBy)}</b></div></div>
@@ -355,6 +359,7 @@ x.addEventListener('click',()=>document.exitFullscreen&&document.exitFullscreen(
 ${FONT_LINKS}
 <style>
 ${REPORT_CSS}
+${LENS_MARK_CSS}
 ${SLIDE_CSS}
 </style>
 </head>

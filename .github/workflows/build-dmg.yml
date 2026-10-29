@@ -12,7 +12,8 @@ on:
 
 concurrency:
   group: build-dmg-${{ github.ref }}
-  cancel-in-progress: true
+  # Builds of main run one at a time (never cancelled) so each gets its own version number.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read
@@ -27,7 +28,7 @@ jobs:
     runs-on: macos-latest   # Apple Silicon; the app bundles both arm64 and x64 Node runtimes
     timeout-minutes: 40
     permissions:
-      contents: write        # needed only to publish releases on main / tags
+      contents: write        # needed to create version tags and releases
     steps:
       - name: Check out
         uses: actions/checkout@v6
@@ -46,18 +47,28 @@ jobs:
         run: |
           PKG_VERSION="$(node -p "require('./package.json').version")"
           SHORT_SHA="${GITHUB_SHA::7}"
+          RELEASE=false
+          SUFFIX=""
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            # A tag you pushed by hand, e.g. v0.2.0
             VERSION="${GITHUB_REF_NAME#v}"
-            SUFFIX=""
+          elif [[ "$GITHUB_REF" == refs/heads/main && "$GITHUB_EVENT_NAME" != pull_request ]]; then
+            # Every build of main gets its own permanent version: <major>.<minor> from package.json, patch counts up.
+            git fetch --tags --force --quiet origin
+            VERSION="$(git tag -l 'v*' | bash packaging/macos/next-version.sh "$PKG_VERSION")"
+            RELEASE=true
           else
+            # Pull requests and other branches: test builds, not released
             VERSION="$PKG_VERSION"
-            SUFFIX="$SHORT_SHA"
+            SUFFIX="dev-$SHORT_SHA"
           fi
           {
             echo "version=$VERSION"
             echo "suffix=$SUFFIX"
+            echo "release=$RELEASE"
             echo "dmg=Coralogix-Lens-$VERSION${SUFFIX:+-$SUFFIX}.dmg"
           } >> "$GITHUB_OUTPUT"
+          echo "Building version $VERSION${SUFFIX:+ ($SUFFIX)}"
 
       - name: Install dependencies
         run: npm ci
@@ -132,26 +143,19 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Refresh the "latest" pre-release (push to main only)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      - name: Publish versioned release (every build of main)
+        if: steps.meta.outputs.release == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.meta.outputs.version }}
           DMG: dist-mac/${{ steps.meta.outputs.dmg }}
         shell: bash
         run: |
-          cp "$DMG" dist-mac/Coralogix-Lens-latest.dmg
-          ( cd dist-mac && shasum -a 256 Coralogix-Lens-latest.dmg > Coralogix-Lens-latest.dmg.sha256 )
-          NOTES="Automatic build of main at ${GITHUB_SHA::7} ($(date -u +'%Y-%m-%d %H:%M UTC'))."
-          git tag -f latest "$GITHUB_SHA"
-          git push -f origin refs/tags/latest
-          if gh release view latest >/dev/null 2>&1; then
-            gh release edit latest --prerelease --title "Coralogix Lens (latest main build)" --notes "$NOTES"
-          else
-            gh release create latest --prerelease --title "Coralogix Lens (latest main build)" --notes "$NOTES" --target "$GITHUB_SHA"
-          fi
-          gh release upload latest dist-mac/Coralogix-Lens-latest.dmg dist-mac/Coralogix-Lens-latest.dmg.sha256 --clobber
+          # Creates tag v<version> on this commit and a permanent release holding the DMG and its checksum.
+          gh release create "v$VERSION" "$DMG" "$DMG.sha256" --target "$GITHUB_SHA" \
+            --title "Coralogix Lens $VERSION" --generate-notes --latest
 
-      - name: Publish versioned release (tags only)
+      - name: Publish release for a hand-pushed tag
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
@@ -160,6 +164,26 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" "$DMG" "$DMG.sha256" \
             --title "Coralogix Lens ${{ steps.meta.outputs.version }}" --generate-notes
+
+      - name: Refresh the fixed "latest" download link (every build of main)
+        if: steps.meta.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          DMG: dist-mac/${{ steps.meta.outputs.dmg }}
+        shell: bash
+        run: |
+          cp "$DMG" dist-mac/Coralogix-Lens-latest.dmg
+          ( cd dist-mac && shasum -a 256 Coralogix-Lens-latest.dmg > Coralogix-Lens-latest.dmg.sha256 )
+          NOTES="Always the newest build of main. This copy is version $VERSION (commit ${GITHUB_SHA::7}). Every version is kept on its own release, v$VERSION."
+          git tag -f latest "$GITHUB_SHA"
+          git push -f origin refs/tags/latest
+          if gh release view latest >/dev/null 2>&1; then
+            gh release edit latest --prerelease --title "Coralogix Lens (newest build: $VERSION)" --notes "$NOTES"
+          else
+            gh release create latest --prerelease --title "Coralogix Lens (newest build: $VERSION)" --notes "$NOTES" --target "$GITHUB_SHA"
+          fi
+          gh release upload latest dist-mac/Coralogix-Lens-latest.dmg dist-mac/Coralogix-Lens-latest.dmg.sha256 --clobber
 
       - name: Write run summary
         if: always()
@@ -172,7 +196,10 @@ jobs:
             if ls dist-mac/*.dmg >/dev/null 2>&1; then
               echo "- DMG: \`${{ steps.meta.outputs.dmg }}\` ($(du -h "dist-mac/${{ steps.meta.outputs.dmg }}" | cut -f1))"
               echo "- SHA-256: \`$(cut -d' ' -f1 "dist-mac/${{ steps.meta.outputs.dmg }}.sha256")\`"
-              echo "- Download it from **Artifacts** below."
+              if [ "${{ steps.meta.outputs.release }}" = true ]; then
+                echo "- Release: https://github.com/${GITHUB_REPOSITORY}/releases/tag/v${{ steps.meta.outputs.version }}"
+              fi
+              echo "- Also on this run's **Artifacts** below."
             else
               echo "- No DMG was produced. Check the failed step's log."
             fi
