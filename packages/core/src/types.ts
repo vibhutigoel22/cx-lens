@@ -43,7 +43,7 @@ export interface ConfigChange {
 
 export type HelmComponent = 'opentelemetry-agent' | 'opentelemetry-cluster-collector' | 'opentelemetry-gateway';
 export type ConfigOp =
-  | { kind: 'helmPreset'; components: HelmComponent[]; preset: string; value: Record<string, unknown>; anchor?: string }
+  | { kind: 'helmPreset'; components: HelmComponent[]; preset: string; value: unknown; anchor?: string }
   | { kind: 'processor'; name: string; body: Record<string, unknown>; signals: SignalType[]; position: 'first' | 'middle' | 'before-batch' | 'last' | 'before-sampling'; helmComponents?: HelmComponent[] }
   | { kind: 'exporterSetting'; exporterPrefix: string[]; key: string; value: unknown }
   | { kind: 'receiverSetting'; receiverPrefix: string; path: string[]; value: unknown }

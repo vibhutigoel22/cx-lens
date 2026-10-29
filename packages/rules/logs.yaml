@@ -20,7 +20,7 @@ rules:
           corrected: "Playbook used `byteLength($d.resource.attributes:json)` and `$d.subsystemname`. `:json` is not a DataPrime cast type (compile error) and objects cannot be cast to string, so size is measured per attribute; subsystem lives at `$l.subsystemname`."
       candidateLogAttributes: [log.file.path, log.iostream, logtag, time]   # chart README reduceLogAttributes defaults
     config:
-      helmPreset: reduceLogAttributes   # top-level preset (chart README). Playbook nests it under logsCollection — corrected.
+      helmPreset: logsCollection.reduceLogAttributes   # sub-preset of logsCollection: chart values.schema.json and _config.tpl (0.0.367). The chart README's top-level example is rejected by the schema.
     verify:
       - Do any saved views, alerts or parsing rules use log.file.path, log.iostream or logtag?
       - Is the per-attribute saving acceptable?

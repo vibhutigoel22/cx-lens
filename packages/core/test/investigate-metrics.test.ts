@@ -27,7 +27,7 @@ describe('metrics in Investigate mode (recorded live data)', async () => {
   it('bucket skill: Lens computes percentiles and the series change', () => {
     const b = m.find((f) => f.ruleId === 'INV:skill:span-metrics-bucket-optimizer')!;
     expect(b.display!.table!.headers).toEqual(['Service', 'p50 ms', 'p95 ms', 'p99 ms', 'Note']); expect(b.display!.table!.rows.length).toBeGreaterThan(0);
-    expect(b.change!.snippet).toMatch(/histogram:\s*\n\s*explicit:\s*\n\s*buckets:/); expect(b.caveats.join()).toMatch(/Datadog/);
+    expect(b.change!.snippet).toMatch(/opentelemetry-agent:\s*\n\s*presets:\s*\n\s*spanMetrics:\s*\n\s*histogramBuckets:/); // Helm: the chart’s own preset expect(b.caveats.join()).toMatch(/Datadog/);
     expect(b.observedVolume).toMatch(/^duration_ms_bucket/); // the costliest histogram, not db_duration_ms_bucket
   });
   it('reports render the metric findings', () => { const html = renderHtml(buildReport(a)); expect(html).toContain('Distinct values per label'); expect(html).toContain('Latency per top service'); });

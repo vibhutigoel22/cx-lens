@@ -118,6 +118,10 @@ On **Customer context**, tick every way the customer runs the collector: Kuberne
 - Reports show version status per type, “Applies to” on each finding, and the share of log and span volume per type (from `k8s.cluster.name` and `cloud.platform`).
 - CLI: `--deployment helm,ecs,ec2` and `--config helm=values.yaml --config ecs=ecs.yaml`.
 
+### Helm schema check
+
+Before export, every generated Helm values file (optimised and upgraded) is validated against the **otel-integration chart’s own JSON schema** for its target version, merged with the chart defaults exactly as `helm upgrade` does. The chart package is downloaded from the Coralogix Helm repo once per version and cached. A file that would fail shows the same message Helm would give on the Export screen. Lens also repairs `presets.reduceLogAttributes` from older Lens output by moving it to `presets.logsCollection.reduceLogAttributes`.
+
 ### Report layout
 
 Every HTML report (customer and internal) opens with a **one-slide leadership summary**, then a **Technical details** part.
@@ -128,10 +132,22 @@ Every HTML report (customer and internal) opens with a **one-slide leadership su
 - **Audience:** set who the slide is for on the Customer step, or with `--audience` (default “leadership”).
 - **Technical details** follow: stat tiles, roadmap, ranked opportunities, usage trend, upgrade, findings, expansion and next steps. Markdown reports carry the same summary as text at the top.
 
+### Look and feel
+
+The app is dark-first, with a light theme and a "Match macOS" option in the header (the choice is remembered). Every text colour meets WCAG AA in both themes; `npm test` checks this (`scripts/check-contrast.mjs`).
+
+- **Header:** the Coralogix Lens logo, a projected-savings pill once the assessment has run (units per month, share of today, and how much is already verified), Save draft and Start a new review.
+- **Step track:** one pill-shaped bar under the header. Finished steps show a teal check, the current step glows, later steps are muted.
+- **Status bar:** the connector state (team and region, or *Mock mode* for demo data), what this review covers, and the latest Helm chart and collector versions.
+- **Data:** Inter for the interface, JetBrains Mono for labels, metrics and config. Label keys are cyan, values slate, units violet. Verify shows where today's units go by data type and TCO tier, and the costliest metric labels with *High cardinality* and *Churn* badges.
+- **Config changes:** a split diff with line numbers (removed lines in soft crimson, added lines in soft teal). Its toolbar switches between the diff and the new config as YAML or JSON, copies it, and exports the YAML or a patch that `git apply` accepts. Code blocks on each finding have the same toolbar. There is no "CLI" view, because a generated command would not come from the allowed sources.
+- **Loading:** skeleton rows instead of spinners.
+- **Icons:** every icon comes from `brand/logo.png`. After changing the logo, run `npm run icons` to regenerate the macOS app icon (`.icns`, drawn on Apple's 824 px grid), the PNG sizes, `.ico`, the in-app mark, the favicon and the mark in HTML reports.
+
 ### Drafts, starting over and file names
 
-- **Save a draft at any stage** with *Save draft* in the sidebar (or ⌘S). The draft holds the customer details, pillars, config, versions, current step and the assessment with its Verify decisions, and keeps saving as you move on. Resume or delete drafts from **Connect**. Drafts live in `~/.cxlens/drafts` on this Mac and never contain API keys.
-- **Start a new review** (sidebar, and at the end of Remediate) returns to Connect with everything cleared, offering to save a draft first.
+- **Save a draft at any stage** with *Save draft* in the header (or ⌘S). The draft holds the customer details, pillars, config, versions, current step and the assessment with its Verify decisions, and keeps saving as you move on. Resume or delete drafts from **Connect**. Drafts live in `~/.cxlens/drafts` on this Mac and never contain API keys.
+- **Start a new review** (header, and at the end of Remediate) returns to Connect with everything cleared, offering to save a draft first.
 - **Download all** at the end gives one zip with every report and config. *Download all as draft* includes unverified findings and marks every report DRAFT. Via the CLI: `--zip` (with `--allow-draft` for the draft version).
 - **Reports are named after the customer**: `Acme.html`, `Acme.md`, `Acme.json`, `Acme (internal).html`, and `Acme (draft).html` / `Acme (internal, draft).html` for drafts. Characters that are not allowed in file names are removed.
 

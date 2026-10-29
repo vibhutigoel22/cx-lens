@@ -6,24 +6,26 @@ Every push builds, tests and packages Coralogix Lens on a GitHub-hosted Apple Si
 
 | You do | What you get |
 |---|---|
-| Push to `main` | A DMG on the run's **Artifacts** list, plus the **latest** pre-release refreshed with `Coralogix-Lens-latest.dmg` |
-| Open a pull request into `main` | A DMG on the run's **Artifacts** list (no release) |
-| Push a tag such as `v0.2.0` | A GitHub Release called "Coralogix Lens 0.2.0" with the DMG and its checksum |
-| Actions tab → Build macOS DMG → **Run workflow** | A build on demand |
+| Push to `main` | A new **version** (for example `0.1.3`): tag `v0.1.3`, a permanent GitHub Release with `Coralogix-Lens-0.1.3.dmg` and its checksum, and the **latest** download link refreshed |
+| Open a pull request into `main` | A test DMG on the run's **Artifacts** list, named `Coralogix-Lens-<version>-dev-<commit>.dmg` (no release) |
+| Push a tag such as `v0.2.0` yourself | A GitHub Release called "Coralogix Lens 0.2.0" with the DMG and its checksum |
+| Actions tab → Build macOS DMG → **Run workflow** | On `main`: a new version, as for a push. On another branch: a test DMG |
 
-A run takes about 5 to 10 minutes. If a newer push arrives while a build is running on the same branch, the older build is cancelled.
+A run takes about 5 to 10 minutes. Builds of `main` run one at a time and are never cancelled, so every version number is used once. Pull-request builds are cancelled when a newer push arrives.
+
+### Version numbers
+
+- The first two numbers come from `version` in the root `package.json`, and the last number counts up by itself on every build of `main`.
+- If `v<package.json version>` is not tagged yet, that exact version is used. Otherwise the build uses the highest existing `v<major>.<minor>.*` tag plus one.
+- The logic is in `next-version.sh`. Try it locally with `git tag -l 'v*' | bash packaging/macos/next-version.sh 0.1.0`.
+- **Start a new series:** set `"version": "0.2.0"` in `package.json` and push. That build becomes `0.2.0`, and the next ones are `0.2.1`, `0.2.2` and so on.
+- The version appears in the DMG name, the release title and the app's About box (`Info.plist`).
 
 **Downloading:**
-- **Newest build:** Releases → **latest** → `Coralogix-Lens-latest.dmg`. The link stays the same: `https://github.com/vibhutigoel22/cx-lens/releases/download/latest/Coralogix-Lens-latest.dmg`. The repo is private, so you need to be signed in to GitHub.
-- **A specific build:** Actions → the run → **Artifacts**. GitHub delivers artifacts as a `.zip`; unzip it to get the `.dmg`. Artifacts are kept for 30 days.
-
-**Releasing a version:**
-```bash
-npm version 0.2.0 --no-git-tag-version   # updates package.json
-git commit -am "Release 0.2.0"
-git tag v0.2.0
-git push origin main --tags
-```
+- **A specific version:** Releases → `vX.Y.Z` → `Coralogix-Lens-X.Y.Z.dmg`. The link is `https://github.com/vibhutigoel22/cx-lens/releases/download/vX.Y.Z/Coralogix-Lens-X.Y.Z.dmg`. Releases are kept until you delete them.
+- **Always the newest:** `https://github.com/vibhutigoel22/cx-lens/releases/download/latest/Coralogix-Lens-latest.dmg`. This link stays the same.
+- **Test builds from pull requests:** Actions → the run → **Artifacts**. GitHub delivers artifacts as a `.zip`; unzip it to get the `.dmg`. Artifacts are kept for 30 days.
+- The repo is private, so you need to be signed in to GitHub to download.
 
 ## What each run does
 
@@ -34,7 +36,7 @@ git push origin main --tags
 5. **Smoke test:** starts the bundled engine, checks that it serves the UI, and runs a full four-pillar demo report with the bundled CLI.
 6. Signs the app (ad-hoc by default, or with your Developer ID; see below).
 7. Creates the DMG with Apple's `hdiutil` (zlib-compressed UDZO, the standard format), then runs `hdiutil verify`.
-8. Uploads the DMG and its `.sha256`, publishes releases, and writes a summary on the run page.
+8. Uploads the DMG and its `.sha256`. On `main`, it also creates the version tag and release and refreshes the **latest** link. It then writes a summary on the run page.
 
 ## Building on your own Mac
 
