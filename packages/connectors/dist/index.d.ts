@@ -7,3 +7,4 @@ export * from './composite.js';
 export * from './mock.js';
 export * from './factory.js';
 export * from './metric-usage.js';
+export * from './usage-keys.js';
