@@ -118,6 +118,10 @@ On **Customer context**, tick every way the customer runs the collector: Kuberne
 - Reports show version status per type, “Applies to” on each finding, and the share of log and span volume per type (from `k8s.cluster.name` and `cloud.platform`).
 - CLI: `--deployment helm,ecs,ec2` and `--config helm=values.yaml --config ecs=ecs.yaml`.
 
+### Helm schema check
+
+Before export, every generated Helm values file (optimised and upgraded) is validated against the **otel-integration chart’s own JSON schema** for its target version, merged with the chart defaults exactly as `helm upgrade` does. The chart package is downloaded from the Coralogix Helm repo once per version and cached. A file that would fail shows the same message Helm would give on the Export screen. Lens also repairs `presets.reduceLogAttributes` from older Lens output by moving it to `presets.logsCollection.reduceLogAttributes`.
+
 ### Report layout
 
 Every HTML report (customer and internal) opens with a **one-slide leadership summary**, then a **Technical details** part.

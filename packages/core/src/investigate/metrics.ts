@@ -122,7 +122,7 @@ ${cs.map((c) => `### ${c.key}\nseries now: ${fmtCount(c.seriesNow)}; distinct se
     const name = `lens_metric_${n}`;
     let snippet = '';
     if (a.action === 'drop_metric') snippet = stringify({ processors: { [`filter/${name}`]: conditionsSyntax ? { error_mode: 'ignore', metric_conditions: [`metric.name == "${m}"`] } : { error_mode: 'ignore', metrics: { metric: [`name == "${m}"`] } } } }, { lineWidth: 0 });
-    else if (a.action === 'reduce_buckets' && a.buckets) snippet = stringify({ connectors: { spanmetrics: { histogram: { explicit: { buckets: a.buckets.map((b: number) => `${b}ms`) } } } } }, { lineWidth: 0 }) + '# Helm: set the same buckets on the chart’s span metrics preset (see the chart README › Span metrics).\n';
+    else if (a.action === 'reduce_buckets' && a.buckets) snippet = stringify({ connectors: { spanmetrics: { histogram: { explicit: { buckets: a.buckets.map((b: number) => `${b}ms`) } } } } }, { lineWidth: 0 }) + '# Helm: set presets.spanMetrics.histogramBuckets to the same list (chart values.schema.json).\n';
     else if ((a.ottl_statements ?? []).length) snippet = stringify({ processors: { [`transform/${name}`]: { error_mode: 'ignore', metric_statements: [{ context: 'datapoint', statements: a.ottl_statements }] } } }, { lineWidth: 0 });
     else if (a.source_fix) snippet = `# Change at the source:\n# ${a.source_fix}`;
     const display: FindingDisplay = {

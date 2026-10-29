@@ -29,3 +29,4 @@ export { ANALYSIS_SCHEMA } from './investigate/schema.js';
 export * from './investigate/metrics.js';
 export * from './investigate/skills.js';
 export * from './investigate/labels.js';
+export * from './config/helm-schema.js';

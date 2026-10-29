@@ -8,10 +8,11 @@ import { buildReport } from './report/builder.js';
 import { renderHtml, renderMarkdown } from './report/render.js';
 import { checkCustomerSafe, scrubReport } from './report/scrub.js';
 import { compareVersions } from './versions/semver.js';
+import { loadChartSchema, validateHelmValues } from './config/helm-schema.js';
 import { DEPLOYMENT_FOLDER, DEPLOYMENT_LABEL, type DeploymentType } from './types.js';
 
 export interface Outputs {
-  files: Record<string, string>; warnings: string[]; reportNames: ReturnType<typeof reportFileNames>;
+  files: Record<string, string>; warnings: string[]; schemaChecks: { file: string; chart: string; errors: string[] }[]; reportNames: ReturnType<typeof reportFileNames>;
   upgrade: UpgradeResult | null; customerIssues: ReturnType<typeof checkCustomerSafe>;
 }
 
@@ -30,7 +31,9 @@ export function reportFileNames(customer: string, draft = false) {
 export async function produceOutputs(a: Assessment, opts: { allowDraft?: boolean; offline?: boolean } = {}): Promise<Outputs> {
   const files: Record<string, string> = {}; const warnings: string[] = [];
   const deps = a.deployments?.length ? a.deployments : [a.deployment]; const multi = deps.length > 1;
-  const upgrades: (UpgradeResult & { deployment: DeploymentType })[] = [];
+  const upgrades: (UpgradeResult & { deployment: DeploymentType })[] = []; const schemaChecks: Outputs['schemaChecks'] = [];
+  // Same check helm runs: validate generated values against the target chart's own schema.
+  const checkSchema = async (file: string, text: string, version?: string) => { if (!version || opts.offline) return; try { const cs = await loadChartSchema(version); const errors = validateHelmValues(text, cs); schemaChecks.push({ file, chart: version, errors }); for (const e of errors) warnings.push(`${file} does not pass the otel-integration ${version} schema: ${e}`); } catch (e) { warnings.push(`Could not check ${file} against the chart schema: ${(e as Error).message}`); } };
   for (const d of deps) {
     const cfg = (multi ? a.configs?.[d] : a.config) ?? a.config; const pre = multi ? `${DEPLOYMENT_FOLDER[d]}/` : ''; const tag = multi ? `${DEPLOYMENT_LABEL[d]}: ` : '';
     // Findings for this type, with this type's config change.
@@ -38,6 +41,7 @@ export async function produceOutputs(a: Assessment, opts: { allowDraft?: boolean
     const hasConfig = cfg.format === 'helm-values' || cfg.format === 'collector';
     const w = writeConfig(cfg, fs, { allowDraft: opts.allowDraft, deployment: d === 'helm' ? 'helm' : 'collector' });
     files[`${pre}optimized-config.yaml`] = w.text;
+    if (d === 'helm') await checkSchema(`${pre}optimized-config.yaml`, w.text, ((multi ? a.versionsBy?.[d] : a.versions) ?? {}).helmChart?.current);
     if (hasConfig) { files[`${pre}original-config.yaml`] = cfg.text; files[`${pre}optimized-config.diff`] = unifiedDiff(cfg.text, w.text, 'original-config.yaml', 'optimized-config.yaml'); }
     warnings.push(...w.notes.map((n) => tag + n), ...w.skipped.filter((s) => !/status is/.test(s.reason)).map((s) => `${tag}${s.findingId}: ${s.reason}`));
     if (w.protectedRemoved.length) warnings.push(`${tag}Removed protected labels from existing denylists: ${w.protectedRemoved.join(', ')}`);
@@ -52,7 +56,7 @@ export async function produceOutputs(a: Assessment, opts: { allowDraft?: boolean
         const [contribMd, coreMd, chartMd, chartReadme] = await Promise.all([get(CONTRIB_CHANGELOG, 'contrib-CHANGELOG.md'), get(CORE_CHANGELOG, 'core-CHANGELOG.md'), d === 'helm' ? get(CHART_CHANGELOG, 'chart-CHANGELOG.md') : Promise.resolve(''), d === 'helm' ? get(CHART_README, 'chart-README.md') : Promise.resolve('')]);
         const up = upgradeConfig({ ...cfg, text: w.text }, { fromCollector: v.collector?.current, toCollector: toC, fromChart: v.helmChart?.current, toChart: v.helmChart?.latest, contribMd, coreMd, chartMd, chartReadme });
         upgrades.push({ ...up, deployment: d });
-        files[`${pre}upgraded-config.yaml`] = up.text; files[`${pre}upgraded-config.diff`] = unifiedDiff(cfg.text, up.text, 'original-config.yaml', 'upgraded-config.yaml'); files[`${pre}breaking-changes.md`] = breakingChangesMarkdown(up);
+        files[`${pre}upgraded-config.yaml`] = up.text; if (d === 'helm') await checkSchema(`${pre}upgraded-config.yaml`, up.text, v.helmChart?.latest); files[`${pre}upgraded-config.diff`] = unifiedDiff(cfg.text, up.text, 'original-config.yaml', 'upgraded-config.yaml'); files[`${pre}breaking-changes.md`] = breakingChangesMarkdown(up);
       } catch (e) { warnings.push(`${tag}Upgrade analysis unavailable: ${(e as Error).message}`); }
     }
   }
@@ -70,5 +74,5 @@ export async function produceOutputs(a: Assessment, opts: { allowDraft?: boolean
   files[fn.internalMd] = renderMarkdown(internal); files[fn.internalHtml] = renderHtml(internal);
   files[fn.customerMd] = cmd; files[fn.customerHtml] = renderHtml(customer);
   if (a.artifacts.labelCsv) files[`${a.options.spanMetric}_ALL_SERVICES_unique_labels.csv`] = a.artifacts.labelCsv;
-  return { files, warnings, upgrade, customerIssues: issues, reportNames: fn };
+  return { files, warnings, schemaChecks, upgrade, customerIssues: issues, reportNames: fn };
 }
