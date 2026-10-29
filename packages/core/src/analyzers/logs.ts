@@ -13,7 +13,7 @@ export function logsPlugins(cat: Catalogue): AnalyzerPlugin[] {
   return [
     definePlugin(cat, 'LOG-ATTR-REDUCTION', 'logs', {
       async detect(ctx) {
-        if (ctx.config.views.some((v) => v.presets?.reduceLogAttributes?.enabled) || /reduceLogAttributes:\s*\n\s*enabled:\s*true/.test(ctx.config.text)) return null;
+        if (ctx.config.views.some((v) => v.presets?.logsCollection?.reduceLogAttributes?.enabled)) return null;
         const ev = []; let gb = 0; const per: Record<string, number> = {};
         for (const attr of cat.rules['LOG-ATTR-REDUCTION'].detect.candidateLogAttributes as string[]) {
           const e = await ctx.query('LOG-SAVINGS-CALC', 'per-attribute-cost', { attr }); ev.push(e);
@@ -22,9 +22,9 @@ export function logsPlugins(cat: Catalogue): AnalyzerPlugin[] {
         }
         return gb > 0 ? { applicable: true, evidence: ev, facts: { per, gb }, observedVolume: Object.entries(per).map(([k, v]) => `${k} ${(v * 1000).toFixed(1)} MB/day`).join(' · ') } : null;
       },
-      recommend: (d) => ({ nextStep: 'Enable the reduceLogAttributes preset (top-level preset, applied on the agent). No application change.', detail: `Measured attribute payload: ${Object.entries(d.facts.per).map(([k, v]: any) => `${k}: ${(v * 1000).toFixed(2)} MB/day`).join(', ')}.` }),
+      recommend: (d) => ({ nextStep: 'Enable the reduceLogAttributes sub-preset under logsCollection on the agent (presets.logsCollection.reduceLogAttributes). No application change.', detail: `Measured attribute payload: ${Object.entries(d.facts.per).map(([k, v]: any) => `${k}: ${(v * 1000).toFixed(2)} MB/day`).join(', ')}.` }),
       generateConfigPatch: (_d, ctx) => ctx.deployment === 'helm'
-        ? { summary: 'Enable reduceLogAttributes', snippet: stringify({ 'opentelemetry-agent': { presets: { reduceLogAttributes: { enabled: true } } } }), ops: [{ kind: 'helmPreset', components: ['opentelemetry-agent'], preset: 'reduceLogAttributes', value: { enabled: true } }] }
+        ? { summary: 'Enable reduceLogAttributes (logsCollection sub-preset)', snippet: stringify({ 'opentelemetry-agent': { presets: { logsCollection: { reduceLogAttributes: { enabled: true } } } } }), ops: [{ kind: 'helmPreset', components: ['opentelemetry-agent'], preset: 'logsCollection.reduceLogAttributes', value: { enabled: true } }] }
         : { summary: 'Delete unused log record attributes', snippet: '', ops: [{ kind: 'processor', name: 'transform/reduce_log_attributes', body: { error_mode: 'ignore', log_statements: [{ context: 'log', statements: ['delete_key(attributes, "log.file.path")', 'delete_key(attributes, "log.iostream")', 'delete_key(attributes, "logtag")'] }] }, signals: ['logs'], position: 'middle' }] },
       estimateSavings: (d, ctx) => unitsFromLogGb(d.facts.gb, ctx, '(avg value bytes + key bytes) × logs per day for each attribute'),
     }),
