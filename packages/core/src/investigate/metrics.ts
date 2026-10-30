@@ -7,6 +7,7 @@ import { effectiveRate, pillarDailyGb } from '../units/calculator.js';
 import { compareVersions } from '../versions/semver.js';
 import { resolveSources, loadCatalogue } from '../rules/catalogue.js';
 import type { Finding, FindingDisplay } from '../types.js';
+import { askClaude } from './claude-call.js';
 
 /** PromQL helpers. `*_over_time` functions drop __name__, so ranking uses an instant query and churn is measured per metric. */
 export const winOf = (ctx: AnalyzerContext) => `${Math.round(ctx.opts.windowHours * 60)}m`;
@@ -82,8 +83,7 @@ Window: ${ctx.opts.range ? `${ctx.opts.range.start} to ${ctx.opts.range.end}` : 
 
 ${cs.map((c) => `### ${c.key}\nseries now: ${fmtCount(c.seriesNow)}; distinct series over the window: ${fmtCount(c.seriesWindow)}\ndistinct values per label (over the window): ${c.labels.map((l) => `${l.name}=${fmtCount(l.distinct)}`).join(', ')}\nsample series (masked):\n${c.samples.map((s, i) => `[${i + 1}] ${s}`).join('\n')}`).join('\n\n')}`;
   ctx.progress({ checkId: 'INVESTIGATE', title: 'Investigate with Claude', status: 'running', message: `Claude is analysing ${cs.length} metrics` });
-  const res = await ctx.connector.askAI?.(prompt, '', { schema: METRICS_SCHEMA });
-  let ai: any[] = []; try { const j: any = res?.json ?? JSON.parse(String(res?.text ?? '').replace(/```json|```/g, '').trim()); ai = j.contributors ?? []; } catch { notes.push('Claude’s metrics answer could not be read as JSON.'); }
+  let ai: any[] = []; try { ai = (await askClaude(ctx, `${cs.length} metrics`, prompt, METRICS_SCHEMA))?.contributors ?? []; } catch (e) { notes.push(`Claude didn’t analyse the metrics: ${(e as Error).message}`); }
   const usage = JSON.stringify([...((await ctx.connector.listResources?.('alerts')) ?? []), ...((await ctx.connector.listResources?.('recording-rules')) ?? [])]);
   const mGb = pillarDailyGb(ctx.usage, 'metrics'); const rate = effectiveRate(ctx.usage, 'metrics');
   const findings: Finding[] = []; let n = 0;

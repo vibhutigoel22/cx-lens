@@ -16,7 +16,7 @@ export interface AssessOptions {
   spanMetric: string;        // calls_total by default
   maxAttrQueries: number;
   /** Investigate mode: data-driven analysis with Claude, validated by Lens. */
-  investigate?: { enabled: boolean; maxContributors: number; skills?: { spanNames?: boolean; buckets?: boolean }; vendor?: string };
+  investigate?: { enabled: boolean; maxContributors: number; skills?: { spanNames?: boolean; buckets?: boolean }; vendor?: string; /** claude CLI model alias (sonnet, opus…); empty = the CLI's default */ model?: string };
 }
 export const DEFAULT_OPTIONS: AssessOptions = {
   windowHours: 24, dupWindowMinutes: 15, rowLimit: 200,

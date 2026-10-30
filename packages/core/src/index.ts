@@ -30,3 +30,4 @@ export * from './investigate/metrics.js';
 export * from './investigate/skills.js';
 export * from './investigate/labels.js';
 export * from './config/helm-schema.js';
+export * from './config/batch-check.js';

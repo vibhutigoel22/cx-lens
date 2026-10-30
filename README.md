@@ -122,6 +122,10 @@ On **Customer context**, tick every way the customer runs the collector: Kuberne
 
 Before export, every generated Helm values file (optimised and upgraded) is validated against the **otel-integration chart’s own JSON schema** for its target version, merged with the chart defaults exactly as `helm upgrade` does. The chart package is downloaded from the Coralogix Helm repo once per version and cached. A file that would fail shows the same message Helm would give on the Export screen. Lens also repairs `presets.reduceLogAttributes` from older Lens output by moving it to `presets.logsCollection.reduceLogAttributes`.
 
+### Deploy checks
+
+Besides the chart schema, every generated config is checked for a collector start-up rule that Helm cannot see: `send_batch_max_size` must be at least `send_batch_size` once the chart’s batch preset is merged in (on by default for the agent and the cluster collector: 1024 / 2048). For Helm values Lens never writes batch settings itself; it only places `batch` last in each pipeline.
+
 ### Report layout
 
 Every HTML report (customer and internal) opens with a **one-slide leadership summary**, then a **Technical details** part.

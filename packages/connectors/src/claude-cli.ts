@@ -14,12 +14,13 @@ export class ClaudeCliAdapter implements SkillRunner {
    * Headless call. The prompt goes in on stdin (no argv size limits), tools are switched off so Claude can only read
    * what Lens sends and reply, nothing is saved as a session, and an optional JSON Schema enforces the answer shape.
    */
-  async ask(prompt: string, extra: string[] = [], schema?: object): Promise<{ text: string; json?: unknown } | null> {
+  async ask(prompt: string, extra: string[] = [], schema?: object, o: { model?: string; timeoutMs?: number } = {}): Promise<{ text: string; json?: unknown } | null> {
     if (!this.available()) return null;
-    const args = ['-p', '--output-format', 'json', '--tools', '', '--no-session-persistence', ...(schema ? ['--json-schema', JSON.stringify(schema)] : []), ...extra];
-    const r = await run(this.bin, args, { input: prompt, timeoutMs: 600000 });
+    const args = ['-p', '--output-format', 'json', '--tools', '', '--no-session-persistence', ...(schema ? ['--json-schema', JSON.stringify(schema)] : []), ...(o.model ? ['--model', o.model] : []), ...extra];
+    const limit = o.timeoutMs ?? 600000; const r = await run(this.bin, args, { input: prompt, timeoutMs: limit });
+    if (r.timedOut) throw new Error(`Claude didn’t answer within ${Math.round(limit / 60000)} minutes (prompt ${Math.round(prompt.length / 1024)} KB). Try fewer contributors, a shorter window, or a faster model.`);
     // Errors come back as JSON on stdout ({ is_error: true, result: "Not logged in · Please run /login" }), even with a non-zero exit.
-    let j: any; try { j = JSON.parse(r.stdout); } catch { if (r.code !== 0) throw new Error(`claude CLI failed: ${(r.stderr || r.stdout).trim().slice(0, 200)}`); return { text: r.stdout }; }
+    let j: any; try { j = JSON.parse(r.stdout); } catch { if (r.code !== 0) throw new Error((r.stderr || r.stdout).trim() ? `claude CLI failed: ${(r.stderr || r.stdout).trim().slice(0, 200)}` : `claude CLI stopped after ${Math.round(r.ms / 1000)}s with exit code ${r.code} and no output`); return { text: r.stdout }; }
     if (j.is_error || r.code !== 0) throw new Error(String(j.result ?? j.error ?? 'claude CLI returned an error').slice(0, 200));
     return { text: String(j.result ?? ''), json: j.structured_output ?? undefined };
   }

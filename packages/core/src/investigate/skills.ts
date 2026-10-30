@@ -9,6 +9,7 @@ import { effectiveRate, pillarDailyGb } from '../units/calculator.js';
 import type { Finding } from '../types.js';
 import { pq, scalar, winOf } from './metrics.js';
 import { resolveSpanMetrics } from './labels.js';
+import { askClaude } from './claude-call.js';
 
 /** TAM skills (playbook › AI Skills). Lens collects the data each skill needs through cx; Claude applies the skill’s method with tools off. */
 export function skillsDir(): string { return process.env.CXLENS_SKILLS_DIR ?? join(dirname(rulesDir()), '..', 'skills'); }
@@ -39,7 +40,7 @@ export async function runSpanNameSkill(ctx: AnalyzerContext, totalSeries: number
   for (const r of per) { const s = r.metric.service_name; vals[s] = (await pq(ctx, `count by (span_name) (count_over_time(${M}{service_name="${s.replace(/"/g, '\\"')}"}[${W}]))`)).map((x) => x.metric.span_name).filter(Boolean); }
   const data = per.map((r) => { const s = r.metric.service_name; return `service ${s}: ${fmtCount(Number(r.value[1]))} unique span_name values. Examples:\n${vals[s].slice(0, 40).map((v) => `  ${maskText(v).masked}`).join('\n')}`; }).join('\n\n');
   ctx.progress({ checkId: 'INVESTIGATE', title: 'Investigate with Claude', status: 'running', message: 'Running TAM skill: span-name-cardinality-analyzer' });
-  const res = await ctx.connector.askAI?.(`${PREAMBLE('span-name-cardinality-analyzer')}${md}\n\n=== DATA (metric ${M}, window ${W}) ===\n${data}`, '', { schema: SPAN_SCHEMA });
+  const res = { json: await askClaude(ctx, 'span names (TAM skill)', `${PREAMBLE('span-name-cardinality-analyzer')}${md}\n\n=== DATA (metric ${M}, window ${W}) ===\n${data}`, SPAN_SCHEMA).catch(() => null), text: '' };
   let j: any; try { j = res?.json ?? JSON.parse(String(res?.text ?? '').replace(/```json|```/g, '').trim()); } catch { return { note: 'The span-name skill answer could not be read.' }; }
   // Validate: apply the patterns, in order, to every collected span_name value.
   const problems: string[] = []; const res2: RegExp[] = [];
@@ -79,7 +80,7 @@ export async function runBucketSkill(ctx: AnalyzerContext, vendor: string, total
   const current = [...new Set(per.flatMap((p) => p.buckets.map((b) => b.le)).filter(Number.isFinite))].sort((a, b) => a - b);
   const table = per.map((p) => `${p.service}: requests ${fmtCount(p.buckets.find((b) => !Number.isFinite(b.le))?.c ?? 0)}; p50 ${quantile(p.buckets, 0.5)?.toFixed(1)} ms; p95 ${quantile(p.buckets, 0.95)?.toFixed(1)} ms; p99 ${quantile(p.buckets, 0.99)?.toFixed(1)} ms; cumulative: ${p.buckets.sort((a, b) => a.le - b.le).map((b) => `le=${Number.isFinite(b.le) ? b.le : '+Inf'}:${Math.round(b.c)}`).join(' ')}`).join('\n');
   ctx.progress({ checkId: 'INVESTIGATE', title: 'Investigate with Claude', status: 'running', message: 'Running TAM skill: span-metrics-bucket-optimizer' });
-  const res = await ctx.connector.askAI?.(`${PREAMBLE('span-metrics-bucket-optimizer')}${md}\n\n=== DATA (metric ${H}, window ${W}; percentiles interpolated by Lens) ===\nVendor compared against: ${vendor}\nCurrently deployed buckets (ms): ${current.join(', ')}\n${table}`, '', { schema: BUCKET_SCHEMA });
+  const res = { json: await askClaude(ctx, 'histogram buckets (TAM skill)', `${PREAMBLE('span-metrics-bucket-optimizer')}${md}\n\n=== DATA (metric ${H}, window ${W}; percentiles interpolated by Lens) ===\nVendor compared against: ${vendor}\nCurrently deployed buckets (ms): ${current.join(', ')}\n${table}`, BUCKET_SCHEMA).catch(() => null), text: '' };
   let j: any; try { j = res?.json ?? JSON.parse(String(res?.text ?? '').replace(/```json|```/g, '').trim()); } catch { return { note: 'The bucket skill answer could not be read.' }; }
   const nb: number[] = j.buckets_ms ?? []; const problems: string[] = [];
   if (!nb.length || [...nb].sort((a, b) => a - b).join() !== nb.join()) problems.push('Bucket bounds must be a non-empty ascending list');

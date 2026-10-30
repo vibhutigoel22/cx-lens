@@ -10,6 +10,7 @@ import { resolveSources, loadCatalogue } from '../rules/catalogue.js';
 import { findBinary } from '../config/validate.js';
 import type { Finding, Phase, Effort, QueryEvidence } from '../types.js';
 import { ANALYSIS_SCHEMA, SYSTEM_RULES } from './schema.js';
+import { askClaude, chunk } from './claude-call.js';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -115,11 +116,17 @@ export async function investigate(ctx: AnalyzerContext, opts: InvestigateOptions
   const cs = await discover(ctx, opts.maxContributors);
   if (!cs.length) return { findings: [], notes: ['No data found in the window to investigate.'] };
   const v = ctx.versions.collector?.current ?? ctx.versions.collector?.latest; const conditionsSyntax = !v || compareVersions(v, '0.146.0') >= 0;
-  const prompt = `${SYSTEM_RULES({ collectorVersion: v, conditionsSyntax, protectedLabels: [...cat.protected.exact, ...cat.protected.prefixes.map((x) => x + '*')] })}\n\n${promptFor(ctx, cs)}`;
-  ctx.progress({ checkId: 'INVESTIGATE', title: 'Investigate with Claude', status: 'running', message: `Claude is analysing ${cs.length} contributors` });
-  const res = await ctx.connector.askAI(prompt, '', { schema: ANALYSIS_SCHEMA });
-  let ai: AIContributor[] = [];
-  try { const j: any = res?.json ?? JSON.parse(String(res?.text ?? '').replace(/```json|```/g, '').trim()); ai = j.contributors ?? []; } catch { notes.push('Claude’s answer could not be read as JSON, so no Investigate findings were produced.'); }
+  const rules = SYSTEM_RULES({ collectorVersion: v, conditionsSyntax, protectedLabels: [...cat.protected.exact, ...cat.protected.prefixes.map((x) => x + '*')] });
+  // Small groups: each call stays quick, and a slow or failed group only skips its own contributors.
+  const logsC = cs.filter((c) => c.pillar === 'logs'), spansC = cs.filter((c) => c.pillar === 'traces');
+  const groups = [...chunk(logsC, 3).map((g, i) => ({ g, what: `log patterns ${i * 3 + 1}–${i * 3 + g.length} of ${logsC.length}` })), ...chunk(spansC, 3).map((g, i) => ({ g, what: `span operations ${i * 3 + 1}–${i * 3 + g.length} of ${spansC.length}` }))];
+  let ai: AIContributor[] = []; const prompts: string[] = [];
+  for (const { g, what } of groups) {
+    const p = `${rules}\n\n${promptFor(ctx, g)}`; prompts.push(p);
+    try { const j = await askClaude(ctx, what, p, ANALYSIS_SCHEMA); ai.push(...((j?.contributors ?? []) as AIContributor[]).filter((x) => g.some((c) => c.key === x.key) && !ai.some((y) => y.key === x.key))); }
+    catch (e) { notes.push(`Claude didn’t analyse ${what}: ${(e as Error).message}`); }
+  }
+  const prompt = prompts.join('\n\n---\n\n');
   const lb = await logBaseline(ctx); const sb = await spanBaseline(ctx);
   const findings: Finding[] = []; let n = 0;
   for (const a of ai) {

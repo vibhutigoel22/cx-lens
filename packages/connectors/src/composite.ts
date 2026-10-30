@@ -10,7 +10,7 @@ export class CompositeConnector implements Connector {
   metricUsage?: Connector['metricUsage'];
   constructor(private cx: CxCliAdapter, private metrics?: MetricsApiAdapter, private claude?: ClaudeCliAdapter) {
     this.id = ['cx-cli', metrics && 'metrics-api-fallback', claude?.available() && 'claude-cli'].filter(Boolean).join('+');
-    if (claude?.available()) this.askAI = (prompt, sample, o) => claude.ask(sample ? `${prompt}\n\nMasked sample:\n${sample}` : prompt, [], o?.schema);
+    if (claude?.available()) this.askAI = (prompt, sample, o) => claude.ask(sample ? `${prompt}\n\nMasked sample:\n${sample}` : prompt, [], o?.schema, { model: o?.model, timeoutMs: o?.timeoutMs });
   }
   async healthCheck() { const c = await this.cx.healthCheck(); return { ok: c.ok, detail: c.detail, capabilities: [...c.capabilities, ...(this.metrics ? ['metrics-api-fallback'] : [])] }; }
   listTeams() { return this.cx.listTeams(); }

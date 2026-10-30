@@ -6,6 +6,7 @@ import { effectiveRate, pillarDailyGb } from '../units/calculator.js';
 import { resolveSources, loadCatalogue } from '../rules/catalogue.js';
 import type { Finding } from '../types.js';
 import { pq, scalar, winOf, isProtectedMetricLabel } from './metrics.js';
+import { askClaude } from './claude-call.js';
 
 export type LabelKind = 'high-cardinality' | 'churn' | 'constant' | 'normal';
 export interface LabelRow { name: string; unique: number; metricCount?: number; series?: number; units?: number; fraction?: number; kind: LabelKind; locked?: 'protected' | 'needed' }
@@ -138,7 +139,7 @@ Rules: never touch protected labels (${[...cat.protected.exact, ...cat.protected
 
 ${chosen.map((r) => { const e = evidence[r.name]; return `### label:${r.name}\nkind (by Lens): ${r.kind}; unique values: ${fmtCount(r.unique)}; carried by ${r.metricCount ?? e.metrics.length} metrics; ${pct(r)}\n${e.shapes.length ? `value shapes (Lens): ${fmtCount(e.values.length)} values → ${fmtCount(e.shapes.length)} shapes. Top shapes:\n${e.shapes.slice(0, 12).map((s) => `  ${s.count}× ${maskText(s.shape).masked}  e.g. ${maskText(s.examples[0].slice(0, 160)).masked}`).join('\n')}` : 'single value on every series'}\nmetrics: ${e.metrics.slice(0, 8).map((m) => m.name).join(', ')}`; }).join('\n\n')}`;
   if (ctx.connector.askAI) ctx.progress({ checkId: 'INVESTIGATE', title: 'Investigate with Claude', status: 'running', message: `Claude is analysing ${chosen.length} labels` });
-  const res = ctx.connector.askAI ? await ctx.connector.askAI(prompt, '', { schema: LABELS_SCHEMA }).catch(() => null) : null;
+  let res: { json: unknown; text?: string } | null = null; if (ctx.connector.askAI) { try { res = { json: await askClaude(ctx, `${chosen.length} labels`, prompt, LABELS_SCHEMA) }; } catch (e) { notes.push(`Claude didn’t analyse the labels (Lens used its own fixes where it had one): ${(e as Error).message}`); } }
   let ai: any[] = []; if (res) { try { const j: any = res?.json ?? JSON.parse(String(res?.text ?? '').replace(/```json|```/g, '').trim()); ai = j.labels ?? []; } catch { notes.push('Claude’s label answer could not be read as JSON; Lens used its own fixes where it had one.'); } }
   // Lens's own fix for well-known shapes, so a tested transform exists with or without Claude. The better one wins.
   for (const r of chosen.filter((x) => x.kind === 'high-cardinality')) {

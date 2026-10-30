@@ -44,7 +44,7 @@ export interface ConfigChange {
 export type HelmComponent = 'opentelemetry-agent' | 'opentelemetry-cluster-collector' | 'opentelemetry-gateway';
 export type ConfigOp =
   | { kind: 'helmPreset'; components: HelmComponent[]; preset: string; value: unknown; anchor?: string }
-  | { kind: 'processor'; name: string; body: Record<string, unknown>; signals: SignalType[]; position: 'first' | 'middle' | 'before-batch' | 'last' | 'before-sampling'; helmComponents?: HelmComponent[] }
+  | { kind: 'processor'; name: string; /** omitted: the processor already exists (e.g. the chart's batch preset); only its pipeline position is set */ body?: Record<string, unknown>; signals: SignalType[]; position: 'first' | 'middle' | 'before-batch' | 'last' | 'before-sampling'; helmComponents?: HelmComponent[] }
   | { kind: 'exporterSetting'; exporterPrefix: string[]; key: string; value: unknown }
   | { kind: 'receiverSetting'; receiverPrefix: string; path: string[]; value: unknown }
   | { kind: 'connectorSetting'; connector: string; key: string; value: unknown; helmComponents?: HelmComponent[] };
@@ -121,7 +121,7 @@ export interface Connector {
   /** Optional exact metric usage (Coralogix Metric Usage API). */
   metricUsage?: MetricUsageClient;
   listResources?(kind: 'slos' | 'e2m' | 'tco' | 'alerts' | 'recording-rules'): Promise<unknown[] | null>;
-  askAI?(prompt: string, maskedSample: string, opts?: { schema?: object }): Promise<{ text: string; json?: unknown } | null>;
+  askAI?(prompt: string, maskedSample: string, opts?: { schema?: object; model?: string; timeoutMs?: number }): Promise<{ text: string; json?: unknown } | null>;
 }
 
 export interface CustomerContext {

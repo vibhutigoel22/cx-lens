@@ -52,3 +52,10 @@ describe('tool discovery from a Finder-launched app', () => {
     expect(p).toContain('/opt/homebrew/bin'); expect(p).toContain('/usr/local/bin'); expect(p.indexOf('/usr/bin')).toBeGreaterThanOrEqual(0);
   });
 });
+describe('claude CLI failures are explained', () => {
+  const fake = async (script: string) => { const { mkdtempSync, writeFileSync, chmodSync } = await import('node:fs'); const { join } = await import('node:path'); const { tmpdir } = await import('node:os');
+    const d = mkdtempSync(join(tmpdir(), 'fc-')); const b = join(d, 'claude'); writeFileSync(b, `#!${process.execPath}\n${script}`); chmodSync(b, 0o755); const { ClaudeCliAdapter } = await import('../src/claude-cli.js'); const a = new ClaudeCliAdapter(b); (a as any).available = () => true; return a; };
+  it('says when Claude did not answer in time', async () => { const a = await fake('setTimeout(()=>{}, 60000);'); await expect(a.ask('x', [], undefined, { timeoutMs: 400 })).rejects.toThrow(/didn’t answer within 0 minutes/); });
+  it('says when the CLI stopped with no output', async () => { const a = await fake('process.exit(3);'); await expect(a.ask('x')).rejects.toThrow(/stopped after \d+s with exit code 3 and no output/); });
+  it('passes the chosen model', async () => { const a = await fake("console.log(JSON.stringify({result: JSON.stringify(process.argv.slice(2))}));"); const r = await a.ask('x', [], undefined, { model: 'sonnet' }); expect(JSON.parse(r!.text)).toEqual(expect.arrayContaining(['--model', 'sonnet'])); });
+});
