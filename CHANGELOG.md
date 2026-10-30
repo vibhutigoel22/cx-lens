@@ -10,6 +10,12 @@ Group entries under: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixe
 
 ## [Unreleased]
 
+### Fixed
+- Helm values: Lens no longer writes its own `batch` processor settings. The chart’s batch preset (`send_batch_max_size` 2048) merged with Lens’s `send_batch_size` 8192, and the collector refused to start (“send_batch_max_size must be greater or equal to send_batch_size”). Lens now only moves `batch` to the end of each pipeline, and removes the block from configs an earlier version generated. Collector configs (ECS/EC2) get the chart’s defaults: 1024 / 2048 / 1s.
+- New deploy check before export: `send_batch_max_size` must be at least `send_batch_size` after merging with the chart’s batch preset, shown next to the chart schema check.
+- `reduceLogAttributes` is written under `presets.logsCollection`, where the chart reads it; generated Helm values are validated against the chart’s own schema.
+- Investigate: contributors go to Claude three at a time with a 5-minute limit per call, so a slow or failed group only skips its own contributors. Errors now say what happened (“Claude didn’t answer within 5 minutes…”) instead of “claude CLI failed: .”, the progress shows elapsed time, and you can choose the Claude model (Sonnet is faster on large accounts).
+
 ### Added
 - GitHub Actions workflow (`.github/workflows/build-dmg.yml`) that builds, tests and packages the macOS DMG on a GitHub-hosted Mac:
   - A push to `main` uploads the DMG and its SHA-256 checksum as a run artifact, and refreshes `Coralogix-Lens-latest.dmg` on the **latest** pre-release.

@@ -124,9 +124,13 @@ export function universalPlugins(cat: Catalogue): AnalyzerPlugin[] {
         return issues.length ? { applicable: true, evidence: [], facts: { issues }, observedVolume: issues.join('; ') } : null;
       },
       recommend: (d) => ({ nextStep: 'Put memory_limiter first and batch last in every pipeline.', detail: d.facts.issues.join('\n') }),
-      generateConfigPatch: () => ({ summary: 'memory_limiter first, batch last', snippet: stringify({ processors: { memory_limiter: cat.rules['UNI-MEMLIMIT-BATCH'].config.memory_limiter, batch: cat.rules['UNI-MEMLIMIT-BATCH'].config.batch } }),
-        ops: [{ kind: 'processor', name: 'memory_limiter', body: cat.rules['UNI-MEMLIMIT-BATCH'].config.memory_limiter, signals: ['logs', 'metrics', 'traces'], position: 'first' },
-              { kind: 'processor', name: 'batch', body: cat.rules['UNI-MEMLIMIT-BATCH'].config.batch, signals: ['logs', 'metrics', 'traces'], position: 'last' }] }),
+      generateConfigPatch: (_d, ctx) => {
+        const r = cat.rules['UNI-MEMLIMIT-BATCH'].config; const helm = ctx.deployment === 'helm' || ctx.config.format === 'helm-values';
+        // Helm: the chart’s batch preset provides batch (and merges with anything written here), so only its position is set.
+        return { summary: 'memory_limiter first, batch last', snippet: stringify({ processors: helm ? { memory_limiter: r.memory_limiter } : { memory_limiter: r.memory_limiter, batch: r.batch } }) + (helm ? '# batch: provided by the chart’s batch preset (presets.batch); Lens only moves it to the end of each pipeline.\n' : ''),
+          ops: [{ kind: 'processor', name: 'memory_limiter', body: r.memory_limiter, signals: ['logs', 'metrics', 'traces'], position: 'first' },
+            { kind: 'processor', name: 'batch', ...(helm ? {} : { body: r.batch }), signals: ['logs', 'metrics', 'traces'], position: 'last' }] };
+      },
       estimateSavings: () => none('Stability baseline; prevents data loss during memory pressure.'),
     }),
 

@@ -129,7 +129,9 @@ rules:
     savings: none-units
     config:
       memory_limiter: { check_interval: 5s, limit_percentage: 80, spike_limit_percentage: 25 }
-      batch: { send_batch_size: 8192, timeout: 5s }
+      # Coralogix chart batch preset defaults (otel-integration 0.0.367: sendBatchSize 1024, sendBatchMaxSize 2048, timeout 1s).
+      # Helm: the chart provides batch itself, so Lens only places it last. Collector configs: written with these values.
+      batch: { send_batch_size: 1024, send_batch_max_size: 2048, timeout: 1s }
     verify:
       - Are memory requests and limits set on the collector pods so limit_percentage is meaningful?
     sources: [playbook, otel-memorylimiter, otel-batch]

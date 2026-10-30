@@ -9,15 +9,15 @@ import { delimiter } from 'node:path';
 const EXTRA_PATHS = ['/opt/homebrew/bin', '/usr/local/bin', `${homedir()}/.local/bin`, `${homedir()}/bin`, `${homedir()}/.npm-global/bin`, `${homedir()}/.claude/local`];
 export const toolPath = () => [...new Set([...(process.env.PATH ?? '').split(delimiter), ...EXTRA_PATHS].filter(Boolean))].join(delimiter);
 process.env.PATH = toolPath();
-export interface ExecResult { code: number; stdout: string; stderr: string; ms: number }
+export interface ExecResult { code: number; stdout: string; stderr: string; ms: number; timedOut?: boolean }
 export function which(bin: string): string | null { const r = spawnSync('/usr/bin/env', ['which', bin], { encoding: 'utf8', env: { ...process.env, PATH: toolPath() } }); return r.status === 0 ? r.stdout.trim() : null; }
 export function run(bin: string, args: string[], opts: { env?: Record<string, string>; timeoutMs?: number; input?: string } = {}): Promise<ExecResult> {
   const t0 = Date.now();
   return new Promise((resolve) => {
     const p = spawn(bin, args, { env: { ...process.env, ...opts.env }, stdio: ['pipe', 'pipe', 'pipe'] });
-    let out = '', err = ''; const timer = setTimeout(() => p.kill('SIGTERM'), opts.timeoutMs ?? 120000);
+    let out = '', err = ''; let timedOut = false; const timer = setTimeout(() => { timedOut = true; p.kill('SIGTERM'); }, opts.timeoutMs ?? 120000);
     p.stdout.on('data', (d) => (out += d)); p.stderr.on('data', (d) => (err += d));
-    p.on('close', (code) => { clearTimeout(timer); resolve({ code: code ?? -1, stdout: out, stderr: err, ms: Date.now() - t0 }); });
+    p.on('close', (code) => { clearTimeout(timer); resolve({ code: code ?? -1, stdout: out, stderr: err, ms: Date.now() - t0, timedOut }); });
     p.on('error', (e) => { clearTimeout(timer); resolve({ code: -1, stdout: out, stderr: String(e), ms: Date.now() - t0 }); });
     if (opts.input) p.stdin.end(opts.input); else p.stdin.end();
   });
